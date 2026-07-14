@@ -543,6 +543,12 @@ class HWINFO_API Disk {
     UNKNOWN
   };
 
+  enum class MediaType {
+    SOLID_STATE,
+    ROTATIONAL,
+    UNKNOWN
+  };
+
   friend HWINFO_API std::vector<Disk> getAllDisks();
   friend HWINFO_API std::ostream& operator<<(std::ostream& os, const Disk::Interface& disk_interface);
 
@@ -559,7 +565,8 @@ class HWINFO_API Disk {
   HWI_NODISCARD const std::vector<std::string>& mount_points() const;
   HWI_NODISCARD std::uint32_t id() const;
   HWI_NODISCARD Interface disk_interface() const;
-  /// Returns true for solid-state media. Returns false for rotational media or when detection fails.
+  HWI_NODISCARD MediaType media_type() const;
+  /// Kept for source compatibility. Prefer media_type() when an unknown result must be distinguished from an HDD.
   HWI_NODISCARD bool is_solid_state() const;
 
  private:
@@ -572,7 +579,7 @@ class HWINFO_API Disk {
   std::vector<std::string> _mount_points;
   std::uint32_t _id = invalid_id;
   Interface _interface = Interface::UNKNOWN;
-  bool _is_solid_state = false;
+  MediaType _media_type = MediaType::UNKNOWN;
 };
 
 HWINFO_API std::vector<Disk> getAllDisks();
@@ -765,7 +772,9 @@ inline const std::vector<std::string>& Disk::mount_points() const { return _moun
 
 inline Disk::Interface Disk::disk_interface() const { return _interface; }
 
-inline bool Disk::is_solid_state() const { return _is_solid_state; }
+inline Disk::MediaType Disk::media_type() const { return _media_type; }
+
+inline bool Disk::is_solid_state() const { return _media_type == MediaType::SOLID_STATE; }
 
 inline std::ostream& operator<<(std::ostream& os, const Disk::Interface& disk_interface) {
   switch (disk_interface) {
@@ -1308,7 +1317,7 @@ inline std::map<uint32_t, std::vector<std::string>> getDiskToVolumeMap() {
   return mapping;
 }
 
-inline bool getDiskSolidState(HANDLE device, const hwinfo::Disk::Interface disk_interface) {
+inline hwinfo::Disk::MediaType getDiskMediaType(HANDLE device, const hwinfo::Disk::Interface disk_interface) {
   STORAGE_PROPERTY_QUERY query{};
   query.PropertyId = StorageDeviceSeekPenaltyProperty;
   query.QueryType = PropertyStandardQuery;
@@ -1318,13 +1327,14 @@ inline bool getDiskSolidState(HANDLE device, const hwinfo::Disk::Interface disk_
   if (DeviceIoControl(device, IOCTL_STORAGE_QUERY_PROPERTY, &query, sizeof(query), &descriptor, sizeof(descriptor),
                       &bytesReturned, nullptr) &&
       bytesReturned >= sizeof(descriptor)) {
-    return descriptor.IncursSeekPenalty == FALSE;
+    return descriptor.IncursSeekPenalty == FALSE ? hwinfo::Disk::MediaType::SOLID_STATE
+                                                 : hwinfo::Disk::MediaType::ROTATIONAL;
   }
 
   if (disk_interface == hwinfo::Disk::Interface::NVME) {
-    return true;
+    return hwinfo::Disk::MediaType::SOLID_STATE;
   }
-  return false;
+  return hwinfo::Disk::MediaType::UNKNOWN;
 }
 
 }  // namespace
@@ -1378,7 +1388,7 @@ inline std::vector<Disk> getAllDisks() {
       }
     }
 
-    disk._is_solid_state = getDiskSolidState(hDevice, disk._interface);
+    disk._media_type = getDiskMediaType(hDevice, disk._interface);
 
     DISK_GEOMETRY_EX geometry;
     if (DeviceIoControl(hDevice, IOCTL_DISK_GET_DRIVE_GEOMETRY_EX, nullptr, 0, &geometry, sizeof(geometry),
@@ -1964,7 +1974,7 @@ inline std::optional<bool> parseSolidStateProperty(CFTypeRef property) {
   return std::nullopt;
 }
 
-inline bool getDiskSolidState(io_object_t service) {
+inline hwinfo::Disk::MediaType getDiskMediaType(io_object_t service) {
   CFTypeRef property =
       IORegistryEntrySearchCFProperty(service, kIOServicePlane, CFSTR("Solid State"), kCFAllocatorDefault,
                                       kIORegistryIterateRecursively | kIORegistryIterateParents);
@@ -1972,7 +1982,7 @@ inline bool getDiskSolidState(io_object_t service) {
     const auto result = parseSolidStateProperty(property);
     CFRelease(property);
     if (result.has_value()) {
-      return *result;
+      return *result ? hwinfo::Disk::MediaType::SOLID_STATE : hwinfo::Disk::MediaType::ROTATIONAL;
     }
   }
 
@@ -1980,7 +1990,7 @@ inline bool getDiskSolidState(io_object_t service) {
       IORegistryEntrySearchCFProperty(service, kIOServicePlane, CFSTR("Device Characteristics"), kCFAllocatorDefault,
                                       kIORegistryIterateRecursively | kIORegistryIterateParents);
   if (property == nullptr) {
-    return false;
+    return hwinfo::Disk::MediaType::UNKNOWN;
   }
 
   std::optional<bool> result;
@@ -1989,7 +1999,10 @@ inline bool getDiskSolidState(io_object_t service) {
     result = parseSolidStateProperty(CFDictionaryGetValue(dictionary, CFSTR("Medium Type")));
   }
   CFRelease(property);
-  return result.value_or(false);
+  if (!result.has_value()) {
+    return hwinfo::Disk::MediaType::UNKNOWN;
+  }
+  return *result ? hwinfo::Disk::MediaType::SOLID_STATE : hwinfo::Disk::MediaType::ROTATIONAL;
 }
 
 /**
@@ -2134,7 +2147,7 @@ inline std::vector<Disk> getAllDisks() {
 
       disk._size_bytes = getIORegistryProperty<int64_t, CFNumberRef>(service, CFSTR(kIOMediaSizeKey));
 
-      disk._is_solid_state = getDiskSolidState(service);
+      disk._media_type = getDiskMediaType(service);
 
       // If there's no BSD name, we can't look it up in the mount map
       if (!bsdName.empty()) {
@@ -2691,16 +2704,17 @@ inline uint64_t getDiskSize_Bytes(const std::filesystem::path& path) {
   return 0;
 }
 
-inline bool getDiskSolidState(const std::filesystem::path& path, const hwinfo::Disk::Interface disk_interface) {
+inline hwinfo::Disk::MediaType getDiskMediaType(const std::filesystem::path& path,
+                                                const hwinfo::Disk::Interface disk_interface) {
   std::ifstream rotationalFile(path / "queue/rotational");
   int rotational = -1;
   if (rotationalFile >> rotational && (rotational == 0 || rotational == 1)) {
-    return rotational == 0;
+    return rotational == 0 ? hwinfo::Disk::MediaType::SOLID_STATE : hwinfo::Disk::MediaType::ROTATIONAL;
   }
   if (disk_interface == hwinfo::Disk::Interface::NVME) {
-    return true;
+    return hwinfo::Disk::MediaType::SOLID_STATE;
   }
-  return false;
+  return hwinfo::Disk::MediaType::UNKNOWN;
 }
 
 inline hwinfo::Disk::Interface getDiskUsbVersion(const std::filesystem::path& disk_sys_path) {
@@ -2774,7 +2788,7 @@ inline std::vector<Disk> getAllDisks() {
       disk._serial_number = getDiskSerialNumber(entry.path());
       disk._size_bytes = getDiskSize_Bytes(entry.path());
       disk._interface = getDiskInterface(entry.path());
-      disk._is_solid_state = getDiskSolidState(entry.path(), disk._interface);
+      disk._media_type = getDiskMediaType(entry.path(), disk._interface);
       for (const auto& sub_entry : std::filesystem::directory_iterator(entry.path())) {
         if (std::filesystem::exists(sub_entry.path() / "partition")) {
           disk._mount_points.emplace_back("/dev/" + sub_entry.path().filename().string());

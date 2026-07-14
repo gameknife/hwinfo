@@ -1,11 +1,16 @@
 # hwinfo
 
 `hwinfo` 是一个 C++17 单头文件硬件信息库，用于一次性读取 CPU、GPU、操作系统、内存、磁盘、主板和网络设备信息。
-
-库文件只有一个：
+基础采集 API 仍然只需要一个头文件：
 
 ```cpp
 #include <hwinfo/hwinfo.h>
+```
+
+可选的硬件需求评估层使用：
+
+```cpp
+#include <hwinfo/requirements.h>
 ```
 
 ## 支持平台
@@ -43,6 +48,7 @@ Linux 或 macOS：
 ```text
 build/bin/system_info
 build/bin/hardware_summary
+build/bin/hardware_requirements
 ```
 
 Windows 下文件名带有 `.exe` 后缀。
@@ -181,9 +187,129 @@ for (const auto& disk : hwinfo::getAllDisks()) {
 - `true`：检测为固态存储。
 - `false`：检测为机械存储，或者操作系统未能判断介质类型。
 
+需要区分机械存储和检测失败时，使用 `media_type()`：
+
+```cpp
+switch (disk.media_type()) {
+  case hwinfo::Disk::MediaType::SOLID_STATE:
+    break;
+  case hwinfo::Disk::MediaType::ROTATIONAL:
+    break;
+  case hwinfo::Disk::MediaType::UNKNOWN:
+    break;
+}
+```
+
 Windows 使用 seek-penalty 属性判断，Linux 读取 sysfs 的 `queue/rotational`，macOS 查询 I/O Registry。
 
 `mount_points()` 返回与磁盘关联的卷或设备路径，其具体格式与操作系统有关。
+
+## 硬件需求评估
+
+可选的 `requirements.h` 上层接口可以按 CPU 物理核心总数、GPU 性能目录、RAM 总量和是否存在 SSD
+评估当前机器。结果使用 `PASSED`、`FAILED` 和 `UNKNOWN` 三态；无法采集或无法识别的设备不会被误判为不满足。
+
+```cpp
+#include <hwinfo/requirements.h>
+
+hwinfo::requirements::GpuCatalog gpu_catalog;
+std::string error;
+if (!gpu_catalog.loadCsvFile("gpu_catalog.csv", &error)) {
+  // handle error
+}
+
+hwinfo::requirements::MachineRequirements requirement;
+requirement.min_physical_cpu_cores = 4;
+requirement.min_gpu_model = "GeForce GTX 1060";
+requirement.min_memory_bytes = 8ull * 1024ull * 1024ull * 1024ull;
+requirement.require_solid_state_disk = true;
+
+const auto report = hwinfo::requirements::evaluateCurrentMachine(requirement, gpu_catalog);
+if (report.overall == hwinfo::requirements::EvaluationStatus::PASSED) {
+  // all enabled requirements are satisfied
+}
+```
+
+默认聚合规则：
+
+- CPU：累加所有 socket 的物理核心数。
+- GPU：任意一个成功识别的物理 GPU 达到要求即通过。
+- RAM：比较系统总内存。
+- Disk：存在任意一个 SSD 即通过。
+- 任一明确不满足时总体为 `FAILED`；没有失败但存在无法判断的项目时总体为 `UNKNOWN`。
+
+评估逻辑也可以作用于人工构造的 `HardwareSnapshot`，不读取当前机器，便于自动化测试或评估远程采集结果：
+
+```cpp
+const auto report = hwinfo::requirements::evaluate(snapshot, requirement, gpu_catalog);
+```
+
+### GPU 目录格式
+
+GPU 目录是带表头的 CSV，必需字段为 `canonical_model` 和正整数 `score`。可选字段包括 `rank`、`vendor`、
+`aliases`、`vendor_id` 和 `device_id`。别名之间使用 `|` 分隔。比较使用分数而不是排名，因此同一份目录中分数越高表示性能越高。
+
+```csv
+canonical_model,score,rank,vendor,aliases,vendor_id,device_id
+GeForce GTX 1060,100,2,NVIDIA,GTX 1060,,
+GeForce RTX 3060,200,1,NVIDIA,,,
+```
+
+仓库提供 `tools/update_passmark_gpu_catalog.py`，可以为已阅读并接受 [PassMark 使用条款](https://www.passmark.com/legal/disclaimer.php) 的用户建立本地
+PassMark G3D 快照：
+
+```sh
+python tools/update_passmark_gpu_catalog.py --acknowledge-terms
+```
+
+生成的原始页面和 CSV 位于 `data/local/`。该目录已被 Git 忽略；PassMark 数据受版权保护，不应在未获得
+授权的情况下提交或再分发。核心代码和测试不依赖该数据。
+
+### 将目录和要求固化到本地二进制
+
+默认关闭的 `HWINFO_BUILD_LOCAL_REQUIREMENTS` 选项会在 CMake 配置阶段读取本地 CSV，并将目录内容和
+四项要求写入 `hardware_requirements_embedded`。生成的程序运行时不读取 GPU CSV：
+
+Windows 可以直接运行已经固化默认门槛的脚本：
+
+```bat
+build_embed.bat
+```
+
+输出为 `build/bin/hardware_requirements_embedded.exe`。脚本会在配置前检查本地 PassMark CSV 是否存在。
+
+也可以通过 CMake 手动指定门槛：
+
+```sh
+cmake -S . -B build \
+  -DHWINFO_BUILD_LOCAL_REQUIREMENTS=ON \
+  -DHWINFO_LOCAL_MIN_CPU_CORES=4 \
+  -DHWINFO_LOCAL_MIN_GPU_MODEL="GeForce RTX 3080 Ti" \
+  -DHWINFO_LOCAL_MIN_MEMORY_GIB=8 \
+  -DHWINFO_LOCAL_REQUIRE_SSD=ON
+cmake --build build --config Release --target hardware_requirements_embedded
+```
+
+运行：
+
+```text
+build/bin/hardware_requirements_embedded
+```
+
+可用的本地配置项：
+
+| CMake 配置项 | 默认值 | 含义 |
+| --- | --- | --- |
+| `HWINFO_LOCAL_GPU_CATALOG` | `data/local/passmark_gpu_catalog.csv` | 配置阶段读取的 GPU CSV |
+| `HWINFO_LOCAL_MIN_CPU_CORES` | `4` | 最少物理 CPU 核心总数 |
+| `HWINFO_LOCAL_MIN_GPU_MODEL` | `GeForce RTX 3080 Ti` | 最低 GPU 型号 |
+| `HWINFO_LOCAL_MIN_MEMORY_GIB` | `8` | 最少 RAM，单位 GiB |
+| `HWINFO_LOCAL_REQUIRE_SSD` | `ON` | 是否要求至少一个 SSD |
+
+更新 CSV 或要求后必须重新运行 CMake 配置并重新编译。编译完成后修改或删除外部 CSV 不会改变检测结果。
+这可以防止通过替换外部指标文件修改门槛，但不能防止直接篡改或替换可执行文件；有对抗性防篡改需求时，
+还应对最终程序进行代码签名或校验。嵌入后的程序本身包含 PassMark 数据，未取得授权时也只能本地使用，
+不能随仓库或发布包分发。
 
 ## 主板
 
@@ -232,4 +358,6 @@ double mhz = hwinfo::unit::unit_prefix_to(3'600'000'000ULL, hwinfo::unit::SiPref
 ## 完整示例
 
 - [`examples/hardware_summaryMain.cpp`](examples/hardware_summaryMain.cpp)：只读取 CPU 型号与核心数、GPU 型号、RAM 总量、磁盘型号和 SSD 状态。
+- [`examples/embeddedRequirementsMain.cpp`](examples/embeddedRequirementsMain.cpp)：运行目录和门槛都已固化的本地检测程序。
+- [`examples/requirementsMain.cpp`](examples/requirementsMain.cpp)：加载 GPU CSV 目录并评估当前机器是否达到示例门槛。
 - [`examples/system_infoMain.cpp`](examples/system_infoMain.cpp)：展示所有当前公开组件和扩展字段。
