@@ -12,6 +12,7 @@ inline constexpr std::size_t gpu_catalog_csv_size = sizeof(gpu_catalog_csv) - 1;
 inline constexpr std::uint64_t min_physical_cpu_cores = @HWINFO_LOCAL_MIN_CPU_CORES@ull;
 inline constexpr char min_gpu_model[] =
     R"HWI_GPU_REQ(@HWINFO_LOCAL_MIN_GPU_MODEL@)HWI_GPU_REQ";
+inline constexpr bool allow_unrecognized_gpu = @HWINFO_LOCAL_ALLOW_UNRECOGNIZED_GPU_LITERAL@;
 inline constexpr std::uint64_t min_memory_bytes =
     @HWINFO_LOCAL_MIN_MEMORY_GIB@ull * 1024ull * 1024ull * 1024ull;
 inline constexpr bool require_solid_state_disk = @HWINFO_LOCAL_REQUIRE_SSD_LITERAL@;

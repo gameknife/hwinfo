@@ -22,14 +22,19 @@ int main(int argc, char** argv) {
   req::MachineRequirements requirement;
   requirement.min_physical_cpu_cores = 4;
   requirement.min_gpu_model = "GeForce RTX 3080 Ti";
+  requirement.allow_unrecognized_gpu = true;
   requirement.min_memory_bytes = 8ull * 1024ull * 1024ull * 1024ull;
   requirement.require_solid_state_disk = true;
 
   const auto report = req::evaluateCurrentMachine(requirement, catalog);
+  const std::string displayed_gpu =
+      report.gpu.passed_by_unrecognized_policy && !report.gpu.unresolved_models.empty()
+          ? report.gpu.unresolved_models.front() + " (unrecognized model allowed)"
+          : report.gpu.detected_model;
   std::cout << "overall: " << req::to_string(report.overall) << '\n'
             << "cpu: " << req::to_string(report.cpu.status) << " (" << report.cpu.detected_physical_cores
             << " physical cores)\n"
-            << "gpu: " << req::to_string(report.gpu.status) << " (" << report.gpu.detected_model << ")\n"
+            << "gpu: " << req::to_string(report.gpu.status) << " (" << displayed_gpu << ")\n"
             << "memory: " << req::to_string(report.memory.status) << " (" << report.memory.detected_bytes
             << " bytes)\n"
             << "disk: " << req::to_string(report.disk.status) << " (" << report.disk.solid_state_count

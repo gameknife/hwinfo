@@ -21,15 +21,20 @@ int main() {
   req::MachineRequirements requirement;
   requirement.min_physical_cpu_cores = local::min_physical_cpu_cores;
   requirement.min_gpu_model = local::min_gpu_model;
+  requirement.allow_unrecognized_gpu = local::allow_unrecognized_gpu;
   requirement.min_memory_bytes = local::min_memory_bytes;
   requirement.require_solid_state_disk = local::require_solid_state_disk;
 
   const auto report = req::evaluateCurrentMachine(requirement, catalog);
+  const std::string displayed_gpu =
+      report.gpu.passed_by_unrecognized_policy && !report.gpu.unresolved_models.empty()
+          ? report.gpu.unresolved_models.front() + " (unrecognized model allowed)"
+          : report.gpu.detected_canonical_model;
   std::cout << "overall: " << req::to_string(report.overall) << '\n'
             << "cpu: " << req::to_string(report.cpu.status) << " (required "
             << report.cpu.required_physical_cores << ", detected " << report.cpu.detected_physical_cores << ")\n"
             << "gpu: " << req::to_string(report.gpu.status) << " (required "
-            << report.gpu.required_canonical_model << ", detected " << report.gpu.detected_canonical_model << ")\n"
+            << report.gpu.required_canonical_model << ", detected " << displayed_gpu << ")\n"
             << "memory: " << req::to_string(report.memory.status) << " (required " << report.memory.required_bytes
             << ", detected " << report.memory.detected_bytes << " bytes)\n"
             << "disk: " << req::to_string(report.disk.status) << " (detected " << report.disk.solid_state_count

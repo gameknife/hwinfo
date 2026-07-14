@@ -85,6 +85,7 @@ inline HardwareSnapshot collectHardwareSnapshot() {
 struct MachineRequirements {
   std::uint64_t min_physical_cpu_cores = 0;
   std::string min_gpu_model;
+  bool allow_unrecognized_gpu = false;
   std::uint64_t min_memory_bytes = 0;
   bool require_solid_state_disk = false;
 };
@@ -109,6 +110,7 @@ struct GpuEvaluation {
   std::uint64_t detected_score = 0;
   std::vector<std::string> unresolved_models;
   std::vector<std::string> candidates;
+  bool passed_by_unrecognized_policy = false;
   std::string detail;
 };
 
@@ -631,7 +633,7 @@ inline EvaluationReport evaluate(const HardwareSnapshot& snapshot, const Machine
     } else {
       report.gpu.required_canonical_model = required_lookup.entry.canonical_model;
       report.gpu.required_score = required_lookup.entry.score;
-      bool unresolved_detected_gpu = snapshot.gpus.empty();
+      bool unresolved_detected_gpu = false;
 
       for (const auto& gpu : snapshot.gpus) {
         const auto lookup = gpu_catalog->lookup(gpu.model, gpu.vendor, gpu.vendor_id, gpu.device_id);
@@ -653,6 +655,13 @@ inline EvaluationReport evaluate(const HardwareSnapshot& snapshot, const Machine
       if (report.gpu.detected_score >= report.gpu.required_score) {
         report.gpu.status = EvaluationStatus::PASSED;
         report.gpu.detail = "At least one detected GPU meets the catalog score requirement";
+      } else if (unresolved_detected_gpu && requirement.allow_unrecognized_gpu) {
+        report.gpu.status = EvaluationStatus::PASSED;
+        report.gpu.passed_by_unrecognized_policy = true;
+        report.gpu.detail = "At least one detected GPU is unrecognized and the requirement allows it to pass";
+      } else if (snapshot.gpus.empty()) {
+        report.gpu.status = EvaluationStatus::UNKNOWN;
+        report.gpu.detail = "No GPU was detected";
       } else if (unresolved_detected_gpu) {
         report.gpu.status = EvaluationStatus::UNKNOWN;
         report.gpu.detail = "No known GPU meets the requirement, and at least one detected GPU could not be resolved";

@@ -131,6 +131,32 @@ void testUnknownGpuDoesNotHideKnownPass() {
          "a known passing GPU should pass even when another GPU is unresolved");
 }
 
+void testUnrecognizedGpuPolicy() {
+  const auto catalog = makeCatalog();
+  req::MachineRequirements requirement;
+  requirement.min_gpu_model = "RTX 3060";
+  requirement.allow_unrecognized_gpu = true;
+
+  req::HardwareSnapshot future_gpu;
+  future_gpu.gpus = {{"New Vendor", "Future GPU 9000", "", ""}};
+  const auto future_report = req::evaluate(future_gpu, requirement, catalog);
+  expect(future_report.gpu.status == req::EvaluationStatus::PASSED,
+         "an unrecognized detected GPU should pass when the policy is enabled");
+  expect(future_report.gpu.passed_by_unrecognized_policy,
+         "the report should say that the unrecognized-GPU policy caused the pass");
+
+  req::HardwareSnapshot no_gpu;
+  const auto no_gpu_report = req::evaluate(no_gpu, requirement, catalog);
+  expect(no_gpu_report.gpu.status == req::EvaluationStatus::UNKNOWN,
+         "the policy must not pass when no GPU was detected at all");
+
+  req::HardwareSnapshot known_weak_gpu;
+  known_weak_gpu.gpus = {{"NVIDIA", "GeForce GTX 1060", "", ""}};
+  const auto weak_report = req::evaluate(known_weak_gpu, requirement, catalog);
+  expect(weak_report.gpu.status == req::EvaluationStatus::FAILED,
+         "a known GPU below the requirement should still fail");
+}
+
 void testAmbiguousAliases() {
   req::GpuCatalog catalog;
   req::GpuCatalogEntry first{"First GPU", "Vendor", 10, 2, {"Shared Alias"}, "", ""};
@@ -151,6 +177,7 @@ int main() {
     testFailingEvaluation();
     testUnknownEvaluation();
     testUnknownGpuDoesNotHideKnownPass();
+    testUnrecognizedGpuPolicy();
     testAmbiguousAliases();
   } catch (const std::exception& error) {
     std::cerr << "requirements_test failed: " << error.what() << '\n';
