@@ -2,6 +2,11 @@ cmake_minimum_required(VERSION 3.22)
 
 project(hwinfo LANGUAGES CXX)
 
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+foreach(config DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_${config} "${CMAKE_BINARY_DIR}/bin")
+endforeach()
+
 add_library(hwinfo INTERFACE)
 target_compile_features(hwinfo INTERFACE cxx_std_17)
 target_include_directories(hwinfo INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)

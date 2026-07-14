@@ -47,36 +47,83 @@
 #define HWI_NODISCARD
 #endif
 
+// Common dependencies
+#include <clocale>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
+#include <cwchar>
+#include <limits>
+#include <ostream>
+#include <sstream>
+#include <string>
+#include <type_traits>
+#include <utility>
+#include <vector>
+
+#ifdef HWINFO_WINDOWS
+#include <WbemIdl.h>
+#include <comdef.h>
+#include <devguid.h>
+#include <dxgi1_6.h>
+#include <intrin.h>
+#include <setupapi.h>
+#include <windows.h>
+#include <winioctl.h>
+
+#include <algorithm>
+#include <cctype>
+#include <map>
+#include <optional>
+#endif
+
+#ifdef HWINFO_APPLE
+#include <Availability.h>
+#include <CoreFoundation/CoreFoundation.h>
+#include <IOKit/IOBSD.h>
+#include <IOKit/IOKitLib.h>
+#include <IOKit/storage/IOMedia.h>
+#include <mach/mach_host.h>
+#include <mach/mach_init.h>
+#include <mach/vm_statistics.h>
+#include <sys/mount.h>
+#include <sys/stat.h>
+#include <sys/sysctl.h>
+
+#include <algorithm>
+#include <cctype>
+#include <fstream>
+#include <optional>
+#include <regex>
+#include <unordered_map>
+#endif
+
+#if defined(HWINFO_UNIX) && !defined(HWINFO_APPLE)
+#include <arpa/inet.h>
+#include <ifaddrs.h>
+#include <net/if.h>
+#include <netpacket/packet.h>
+#include <sys/ioctl.h>
+#include <sys/stat.h>
+#include <sys/utsname.h>
+#include <unistd.h>
+
+#include <algorithm>
+#include <array>
+#include <cctype>
+#include <cstdio>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <map>
+#endif
+
 // Utility implementation
 //
 // Created by leon- on 23/06/2023.
 //
 
-#include <string>
-#include <vector>
-
 namespace hwinfo::utils {
-
-template <typename T>
-T get_value(const std::vector<T>& data, size_t index);
-
-template <>
-inline std::string get_value<std::string>(const std::vector<std::string>& data, size_t index) {
-  if (data.size() < index) {
-    return "<unknown>";
-  } else {
-    return data[index];
-  }
-}
-
-template <>
-inline int64_t get_value<int64_t>(const std::vector<int64_t>& data, size_t index) {
-  if (data.size() < index) {
-    return -1;
-  } else {
-    return data[index];
-  }
-}
 
 template <typename T>
 inline bool is_power_of_two(T x) {
@@ -97,47 +144,7 @@ inline T round_to_next_power_of_2(T val) {
 
 }  // namespace hwinfo::utils
 
-// Copyright Leon Freist
-// Author Leon Freist <freist@informatik.uni-freiburg.de>
-
-#include <algorithm>
-#include <clocale>
-#include <cstdint>
-#include <cstdlib>
-#include <cstring>
-#include <sstream>
-#include <string>
-#include <vector>
-
 namespace hwinfo::utils {
-
-/**
- * Replaces an occurence once in the entire string. Stops at first match
- *
- * @param input The input string
- * @param from The token to match
- * @param to The token to use as a replace with matched ones
- */
-inline bool replaceOnce(std::string& input, const std::string& from, const std::string& to) {
-  size_t start_pos = input.find(from);
-
-  if (start_pos == std::string::npos) return false;
-
-  input.replace(start_pos, from.length(), to);
-
-  return true;
-}
-
-/**
- * Replaces all occurences in the entire string.
- *
- * @param input The input string
- * @param from The token to match
- * @param to The token to use as a replace with matched ones
- */
-inline void replaceAll(std::string& input, const char from, const char to) {
-  std::replace(input.begin(), input.end(), from, to);
-}
 
 /**
  * remove all white spaces (' ', '\t', '\n') from start and end of input
@@ -152,22 +159,6 @@ inline void strip(std::string& input) {
   } else {
     input = input.substr(start, end - start + 1);
   }
-}
-
-/**
- * Count occurrences of a substring in input
- * @param input
- * @param substring
- * @return
- */
-inline unsigned count_substring(const std::string& input, const std::string& substring) {
-  unsigned occurrences = 0;
-  std::string::size_type shift = 0;
-  while ((shift = input.find(substring, shift)) != std::string::npos) {
-    occurrences++;
-    shift += substring.size();
-  }
-  return occurrences;
 }
 
 /**
@@ -209,42 +200,6 @@ inline std::vector<std::string> split(const std::string& input, const char delim
   }
   return result;
 }
-
-/**
- * split input at delimiter and return substring at position index.
- * index can be negative, where -1 is the last occurrence.
- * @param input
- * @param delimiter
- * @param index
- * @return
- */
-inline std::string split_get_index(const std::string& input, const std::string& delimiter, int index) {
-  unsigned occ = count_substring(input, delimiter) + 1;
-  index = index < 0 ? static_cast<int>(occ + index) : index;
-  if (static_cast<int>(occ) <= index) {
-    return "";
-  }
-
-  std::string::size_type start_index = 0;
-  while (true) {
-    if (index == 0) {
-      break;
-    }
-    start_index = input.find(delimiter, start_index) + delimiter.size();
-    index--;
-  }
-  std::string::size_type end_index = input.find(delimiter, start_index);
-  if (end_index == std::string::npos) {
-    return {input.begin() + static_cast<int64_t>(start_index), input.end()};
-  }
-  return {input.begin() + static_cast<int64_t>(start_index), input.begin() + static_cast<int64_t>(end_index)};
-}
-
-/**
- * Convert windows wstring to string
- * @return
- */
-inline std::string wstring_to_string() { return ""; }
 
 /**
  * Convert wstring to string
@@ -319,9 +274,6 @@ inline std::string join(const std::vector<std::string>& values, const std::strin
 
 }  // namespace hwinfo::utils
 
-#include <cstdint>
-#include <type_traits>
-
 namespace hwinfo::unit {
 
 enum class SiPrefix : std::uint64_t {
@@ -387,10 +339,6 @@ inline double unit_prefix_to(std::uint64_t value, SiPrefix prefix) {
 
 #ifdef HWINFO_APPLE
 
-#include <sys/sysctl.h>
-
-#include <string>
-
 namespace hwinfo::utils {
 
 // Get a string value from sysctl
@@ -420,12 +368,6 @@ T getSysctlValue(const char* name, T defaultValue = T()) {
 #endif  // HWINFO_APPLE
 
 #ifdef HWINFO_WINDOWS
-
-#include <windows.h>
-
-#include <string>
-#include <type_traits>
-#include <vector>
 
 namespace hwinfo::internal::utils {
 
@@ -467,12 +409,6 @@ T getRegistryValue(HKEY hKeyParent, const std::wstring& subkey, const std::wstri
 
 #ifdef HWINFO_WINDOWS
 
-#include <WbemIdl.h>
-#include <comdef.h>
-
-#include <iostream>
-#include <string>
-#include <vector>
 #ifndef __MINGW32__
 #pragma comment(lib, "wbemuuid.lib")
 #endif
@@ -502,10 +438,6 @@ std::vector<T> query(const std::wstring& wmi_class, const std::wstring& field, c
 #endif
 
 #if defined(HWINFO_UNIX) && !defined(HWINFO_APPLE)
-#include <array>
-#include <map>
-#include <string>
-#include <vector>
 
 namespace hwinfo::unix_os::cpu {
 
@@ -540,69 +472,6 @@ std::map<std::uint32_t, unix_os::cpu::CPU> parse_cpus(
 #endif
 
 // Public API
-// Copyright Leon Freist
-// Author Leon Freist <freist@informatik.uni-freiburg.de>
-
-#include <cstdint>
-#include <limits>
-#include <optional>
-#include <string>
-#include <vector>
-
-namespace hwinfo {
-
-class HWINFO_API Battery {
-  friend HWINFO_API std::vector<Battery> getAllBatteries();
-  friend HWINFO_API std::ostream& operator<<(std::ostream& os, const Battery& battery);
-
- public:
-  static constexpr std::uint32_t invalid_id = std::numeric_limits<std::uint32_t>::max();
-
- public:
-  enum class State { CHARGING, DISCHARGING, UNKNOWN };
-
- public:
-  explicit Battery(std::uint32_t = 0);
-  ~Battery() = default;
-
-  HWI_NODISCARD const std::string& vendor() const;
-  HWI_NODISCARD const std::string& model() const;
-  HWI_NODISCARD const std::string& serialNumber() const;
-  HWI_NODISCARD const std::string& technology() const;
-  HWI_NODISCARD uint32_t energyFull() const;
-
-  double capacity() const;
-
-  HWI_NODISCARD std::uint32_t id() const;
-
-  HWI_NODISCARD uint32_t energyNow() const;
-  HWI_NODISCARD bool charging() const;
-  HWI_NODISCARD bool discharging() const;
-  HWI_NODISCARD State state() const;
-
- private:
-  std::uint32_t _id = invalid_id;
-  std::string _vendor = "<unknown>";
-  std::string _model = "<unknown>";
-  std::string _serial_number = "<unknown>";
-  std::string _technology = "<unknown>";
-  uint32_t _energyFull = 0;
-};
-
-HWINFO_API std::vector<Battery> getAllBatteries();
-
-HWINFO_API std::ostream& operator<<(std::ostream& os, const Battery::State& state);
-HWINFO_API std::ostream& operator<<(std::ostream& os, const Battery& battery);
-
-}  // namespace hwinfo
-
-// Copyright Leon Freist
-// Author Leon Freist <freist@informatik.uni-freiburg.de>
-
-#include <cstdint>
-#include <limits>
-#include <string>
-#include <vector>
 
 namespace hwinfo {
 
@@ -654,14 +523,6 @@ HWINFO_API std::vector<CPU> getAllCPUs();
 
 }  // namespace hwinfo
 
-// Copyright Leon Freist
-// Author Leon Freist <freist@informatik.uni-freiburg.de>
-
-#include <cstdint>
-#include <limits>
-#include <string>
-#include <vector>
-
 namespace hwinfo {
 
 class HWINFO_API Disk {
@@ -684,7 +545,6 @@ class HWINFO_API Disk {
 
   friend HWINFO_API std::vector<Disk> getAllDisks();
   friend HWINFO_API std::ostream& operator<<(std::ostream& os, const Disk::Interface& disk_interface);
-  friend HWINFO_API std::ostream& operator<<(std::ostream& os, const Disk& disk);
 
  public:
   static constexpr std::uint32_t invalid_id = std::numeric_limits<std::uint32_t>::max();
@@ -721,14 +581,6 @@ HWINFO_API std::ostream& operator<<(std::ostream& os, const hwinfo::Disk::Interf
 
 }  // namespace hwinfo
 
-// Copyright Leon Freist
-// Author Leon Freist <freist@informatik.uni-freiburg.de>
-
-#include <cstdint>
-#include <limits>
-#include <string>
-#include <vector>
-
 namespace hwinfo {
 
 class HWINFO_API GPU {
@@ -742,11 +594,9 @@ class HWINFO_API GPU {
 
   HWI_NODISCARD const std::string& vendor() const;
   HWI_NODISCARD const std::string& name() const;
-  HWI_NODISCARD const std::string& driverVersion() const;
   HWI_NODISCARD uint64_t dedicated_memory_Bytes() const;
   HWI_NODISCARD uint64_t shared_memory_Bytes() const;
   HWI_NODISCARD uint64_t frequency_hz() const;
-  HWI_NODISCARD std::uint64_t num_cores() const;
   HWI_NODISCARD std::uint32_t id() const;
   HWI_NODISCARD const std::string& vendor_id() const;
   HWI_NODISCARD const std::string& device_id() const;
@@ -757,11 +607,9 @@ class HWINFO_API GPU {
  private:
   std::string _vendor;
   std::string _name;
-  std::string _driverVersion;
   uint64_t _dedicated_memory_Bytes = 0;
   uint64_t _shared_memory_Bytes = 0;
   uint64_t _frequency_hz = 0;
-  std::uint64_t _num_cores = 0;
   std::uint32_t _id = invalid_id;
   std::string _vendor_id;
   std::string _device_id;
@@ -770,11 +618,6 @@ class HWINFO_API GPU {
 HWINFO_API std::vector<GPU> getAllGPUs();
 
 }  // namespace hwinfo
-
-// Copyright Leon Freist
-// Author Leon Freist <freist@informatik.uni-freiburg.de>
-
-#include <string>
 
 namespace hwinfo {
 
@@ -798,9 +641,6 @@ class HWINFO_API MainBoard {
 };
 
 }  // namespace hwinfo
-
-#include <string>
-#include <vector>
 
 namespace hwinfo {
 
@@ -830,11 +670,6 @@ HWINFO_API std::vector<Network> getAllNetworks();
 
 }  // namespace hwinfo
 
-// Copyright Leon Freist
-// Author Leon Freist <freist@informatik.uni-freiburg.de>
-
-#include <string>
-
 namespace hwinfo {
 
 class HWINFO_API OS {
@@ -861,14 +696,6 @@ class HWINFO_API OS {
 };
 
 }  // namespace hwinfo
-
-// Copyright Leon Freist
-// Author Leon Freist <freist@informatik.uni-freiburg.de>
-
-#include <cstdint>
-#include <limits>
-#include <string>
-#include <vector>
 
 namespace hwinfo {
 
@@ -903,141 +730,43 @@ class HWINFO_API Memory {
 }  // namespace hwinfo
 
 // Common implementation
-// Copyright Leon Freist
-// Author Leon Freist <freist@informatik.uni-freiburg.de>
-
-#include <ostream>
 
 namespace hwinfo {
 
-// =====================================================================================================================
-// _____________________________________________________________________________________________________________________
-inline Battery::Battery(std::uint32_t id) { _id = id; }
-
-// _____________________________________________________________________________________________________________________
-inline std::uint32_t Battery::id() const { return _id; }
-
-// _____________________________________________________________________________________________________________________
-inline const std::string& Battery::vendor() const { return _vendor; }
-
-// _____________________________________________________________________________________________________________________
-inline const std::string& Battery::model() const { return _model; }
-
-// _____________________________________________________________________________________________________________________
-inline const std::string& Battery::serialNumber() const { return _serial_number; }
-
-// _____________________________________________________________________________________________________________________
-inline const std::string& Battery::technology() const { return _technology; }
-
-// _____________________________________________________________________________________________________________________
-inline uint32_t Battery::energyFull() const { return _energyFull; }
-
-// _____________________________________________________________________________________________________________________
-inline bool Battery::charging() const { return state() == State::CHARGING; }
-
-// _____________________________________________________________________________________________________________________
-inline bool Battery::discharging() const { return state() == State::DISCHARGING; }
-
-// _____________________________________________________________________________________________________________________
-inline double Battery::capacity() const {
-  std::uint32_t full = energyFull();
-  if (full == 0) {
-    return 0.f;
-  }
-  return static_cast<double>(energyNow()) / static_cast<double>(full);
-}
-
-// =====================================================================================================================
-// _____________________________________________________________________________________________________________________
-inline std::ostream& operator<<(std::ostream& os, const Battery& battery) {
-  os << "Battery{.id=" << battery._id << "', .vendor='" << battery._vendor << "', .model='" << battery._model
-     << "', .serial_number='" << battery._serial_number << "', technology='" << battery._technology
-     << "', .full_capacity=" << battery._energyFull << ", .state='" << battery.state() << "'}";
-  return os;
-}
-
-// _____________________________________________________________________________________________________________________
-inline std::ostream& operator<<(std::ostream& os, const Battery::State& state) {
-  switch (state) {
-    case Battery::State::CHARGING:
-      os << "Battery::State::CHARGING";
-      break;
-    case Battery::State::DISCHARGING:
-      os << "Battery::State::DISCHARGING";
-      break;
-    case Battery::State::UNKNOWN:
-      os << "Battery::State::UNKNOWN";
-      break;
-  }
-  return os;
-}
-
-}  // namespace hwinfo
-
-// Copyright (c) Leon Freist <freist@informatik.uni-freiburg.de>
-// This software is part of HWBenchmark
-
-#include <string>
-#include <vector>
-
-namespace hwinfo {
-
-// _____________________________________________________________________________________________________________________
 inline std::uint32_t CPU::id() const { return _id; }
 
-// _____________________________________________________________________________________________________________________
 inline const std::string& CPU::modelName() const { return _modelName; }
 
-// _____________________________________________________________________________________________________________________
 inline const std::string& CPU::vendor() const { return _vendor; }
 
-// _____________________________________________________________________________________________________________________
 inline std::uint64_t CPU::numPhysicalCores() const { return _numPhysicalCores; }
 
-// _____________________________________________________________________________________________________________________
 inline std::uint64_t CPU::numLogicalCores() const { return _numLogicalCores; }
 
-// _____________________________________________________________________________________________________________________
 inline const std::vector<std::string>& CPU::flags() const { return _flags; }
 
-// _____________________________________________________________________________________________________________________
 inline const std::vector<CPU::Core>& CPU::cores() const { return _cores; }
 
 }  // namespace hwinfo
 
-// Copyright Leon Freist
-// Author Leon Freist <freist@informatik.uni-freiburg.de>
-
-#include <ostream>
-
 namespace hwinfo {
 
-// _____________________________________________________________________________________________________________________
 inline const std::string& Disk::vendor() const { return _vendor; }
 
-// _____________________________________________________________________________________________________________________
 inline const std::string& Disk::model() const { return _model; }
 
-// _____________________________________________________________________________________________________________________
 inline const std::string& Disk::serial_number() const { return _serial_number; }
 
-// _____________________________________________________________________________________________________________________
 inline uint64_t Disk::size() const { return _size_bytes; }
 
-// _____________________________________________________________________________________________________________________
 inline std::uint32_t Disk::id() const { return _id; }
 
-// _____________________________________________________________________________________________________________________
 inline const std::vector<std::string>& Disk::mount_points() const { return _mount_points; }
 
-// _____________________________________________________________________________________________________________________
 inline Disk::Interface Disk::disk_interface() const { return _interface; }
 
-// _____________________________________________________________________________________________________________________
 inline bool Disk::is_solid_state() const { return _is_solid_state; }
 
-// =====================================================================================================================
-// _____________________________________________________________________________________________________________________
 inline std::ostream& operator<<(std::ostream& os, const Disk::Interface& disk_interface) {
   switch (disk_interface) {
     case Disk::Interface::NVME:
@@ -1085,127 +814,78 @@ inline std::ostream& operator<<(std::ostream& os, const Disk::Interface& disk_in
 
 }  // namespace hwinfo
 
-// Copyright Leon Freist
-// Author Leon Freist <freist@informatik.uni-freiburg.de>
-
-#include <string>
-
 namespace hwinfo {
 
-// _____________________________________________________________________________________________________________________
 inline const std::string& GPU::vendor() const { return _vendor; }
 
-// _____________________________________________________________________________________________________________________
 inline const std::string& GPU::name() const { return _name; }
 
-// _____________________________________________________________________________________________________________________
-inline const std::string& GPU::driverVersion() const { return _driverVersion; }
-
-// _____________________________________________________________________________________________________________________
 inline uint32_t GPU::id() const { return _id; }
 
-// _____________________________________________________________________________________________________________________
 inline uint64_t GPU::dedicated_memory_Bytes() const { return _dedicated_memory_Bytes; }
 
-// _____________________________________________________________________________________________________________________
 inline uint64_t GPU::shared_memory_Bytes() const { return _shared_memory_Bytes; }
 
-// _____________________________________________________________________________________________________________________
 inline uint64_t GPU::frequency_hz() const { return _frequency_hz; }
 
-// _____________________________________________________________________________________________________________________
-inline uint64_t GPU::num_cores() const { return _num_cores; }
-
-// _____________________________________________________________________________________________________________________
 inline const std::string& GPU::vendor_id() const { return _vendor_id; }
 
-// _____________________________________________________________________________________________________________________
 inline const std::string& GPU::device_id() const { return _device_id; }
 
 }  // namespace hwinfo
 
-// Copyright (c) Leon Freist <freist@informatik.uni-freiburg.de>
-// This software is part of HWBenchmark
-
 namespace hwinfo {
 
-// _____________________________________________________________________________________________________________________
 inline const std::string& MainBoard::vendor() const { return _vendor; }
 
-// _____________________________________________________________________________________________________________________
 inline const std::string& MainBoard::name() const { return _name; }
 
-// _____________________________________________________________________________________________________________________
 inline const std::string& MainBoard::version() const { return _version; }
 
-// _____________________________________________________________________________________________________________________
 inline const std::string& MainBoard::serialNumber() const { return _serial_number; }
 
 }  // namespace hwinfo
 
 namespace hwinfo {
 
-// _____________________________________________________________________________________________________________________
 inline const std::string& Network::interfaceIndex() const { return _index; }
 
-// _____________________________________________________________________________________________________________________
 inline const std::string& Network::description() const { return _description; }
 
-// _____________________________________________________________________________________________________________________
 inline const std::string& Network::mac() const { return _mac; }
 
-// _____________________________________________________________________________________________________________________
 inline const std::string& Network::ip4() const { return _ip4; }
 
-// _____________________________________________________________________________________________________________________
 inline const std::string& Network::ip6() const { return _ip6; }
 
 }  // namespace hwinfo
 
-// Copyright (c) Leon Freist <freist@informatik.uni-freiburg.de>
-// This software is part of HWBenchmark
-
-#include <string>
-
 namespace hwinfo {
 
-// _____________________________________________________________________________________________________________________
 inline std::string OS::name() const { return _name; }
 
-// _____________________________________________________________________________________________________________________
 inline std::string OS::version() const { return _version; }
 
-// _____________________________________________________________________________________________________________________
 inline std::string OS::kernel() const { return _kernel; }
 
-// _____________________________________________________________________________________________________________________
 inline bool OS::is32bit() const { return _32bit; }
 
-// _____________________________________________________________________________________________________________________
 inline bool OS::is64bit() const { return _64bit; }
 
-// _____________________________________________________________________________________________________________________
 inline bool OS::isBigEndian() const { return _bigEndian; }
 
-// _____________________________________________________________________________________________________________________
 inline bool OS::isLittleEndian() const { return _littleEndian; }
 
 }  // namespace hwinfo
 
-// Copyright (c) Leon Freist <freist@informatik.uni-freiburg.de>
-// This software is part of HWBenchmark
-
 namespace hwinfo {
 
-// _____________________________________________________________________________________________________________________
 inline const std::vector<Memory::Module>& Memory::modules() const { return _modules; }
 
 }  // namespace hwinfo
 
 #if defined(HWINFO_WINDOWS)
 #ifdef HWINFO_WINDOWS
-
-#include <vector>
 
 namespace hwinfo {
 namespace utils {
@@ -1482,75 +1162,8 @@ inline std::vector<std::string> query(const std::wstring& wmi_class, const std::
 }  // namespace hwinfo
 
 #endif  // HWINFO_WINDOWS
-// Copyright Leon Freist
-// Author Leon Freist <freist@informatik.uni-freiburg.de>
-
-#include <iostream>
 
 #ifdef HWINFO_WINDOWS
-
-namespace hwinfo {
-
-// =====================================================================================================================
-// _____________________________________________________________________________________________________________________
-inline uint32_t Battery::energyNow() const { return 0; }
-// _____________________________________________________________________________________________________________________
-inline Battery::State Battery::state() const { return State::UNKNOWN; }
-
-// =====================================================================================================================
-// _____________________________________________________________________________________________________________________
-inline std::vector<Battery> getAllBatteries() {
-  utils::WMI::_WMI wmi;
-  const std::wstring query_string(L"SELECT DeviceID, FullChargeCapacity, Name FROM Win32_Battery");
-  bool success = wmi.execute_query(query_string);
-  if (!success) {
-    return {};
-  }
-  std::vector<Battery> batteries;
-
-  ULONG u_return = 0;
-  IWbemClassObject* obj = nullptr;
-  int battery_id = 0;
-  while (wmi.enumerator) {
-    wmi.enumerator->Next((long)WBEM_INFINITE, 1, &obj, &u_return);
-    if (!u_return) {
-      break;
-    }
-    Battery battery;
-    battery._id = battery_id++;
-    VARIANT vt_prop;
-    HRESULT hr;
-    hr = obj->Get(L"Name", 0, &vt_prop, nullptr, nullptr);
-    if (SUCCEEDED(hr) && (V_VT(&vt_prop) == VT_BSTR)) {
-      battery._model = utils::wstring_to_std_string(vt_prop.bstrVal);
-    }
-    hr = obj->Get(L"FullChargeCapacity", 0, &vt_prop, nullptr, nullptr);
-    if (SUCCEEDED(hr) && (V_VT(&vt_prop) == VT_I4)) {
-      battery._energyFull = vt_prop.uintVal;
-    }
-    hr = obj->Get(L"DeviceID", 0, &vt_prop, nullptr, nullptr);
-    if (SUCCEEDED(hr) && (V_VT(&vt_prop) == VT_BSTR)) {
-      battery._serial_number = utils::wstring_to_std_string(vt_prop.bstrVal);
-    }
-    VariantClear(&vt_prop);
-    obj->Release();
-    batteries.push_back(std::move(battery));
-  }
-  return batteries;
-}
-
-}  // namespace hwinfo
-
-#endif
-// Copyright (c) Leon Freist <freist@informatik.uni-freiburg.de>
-// This software is part of HWBenchmark
-
-#ifdef HWINFO_WINDOWS
-
-#include <intrin.h>
-
-#include <string>
-#include <vector>
 
 inline int countSetBits(unsigned __int64 mask) {
 #if defined(_M_X64) || defined(__x86_64__)
@@ -1562,7 +1175,6 @@ inline int countSetBits(unsigned __int64 mask) {
 }
 
 namespace hwinfo {
-// _____________________________________________________________________________________________________________________
 inline std::vector<CPU> getAllCPUs() {
   std::vector<CPU> cpus;
   CPU local_cpu;
@@ -1645,17 +1257,8 @@ inline std::vector<CPU> getAllCPUs() {
 }  // namespace hwinfo
 
 #endif  // HWINFO_WINDOWS
-// Copyright Leon Freist
-// Author Leon Freist <freist@informatik.uni-freiburg.de>
 
 #ifdef HWINFO_WINDOWS
-
-#include <windows.h>
-#include <winioctl.h>
-
-#include <map>
-#include <string>
-#include <vector>
 
 namespace {
 
@@ -1728,7 +1331,6 @@ inline bool getDiskSolidState(HANDLE device, const hwinfo::Disk::Interface disk_
 
 namespace hwinfo {
 
-// _____________________________________________________________________________________________________________________
 inline std::vector<Disk> getAllDisks() {
   std::vector<Disk> disks;
 
@@ -1797,23 +1399,8 @@ inline std::vector<Disk> getAllDisks() {
 }  // namespace hwinfo
 
 #endif  // HWINFO_WINDOWS
-// Copyright Leon Freist
-// Author Leon Freist <freist@informatik.uni-freiburg.de>
 
 #ifdef HWINFO_WINDOWS
-
-#include <devguid.h>
-#include <dxgi1_6.h>
-#include <setupapi.h>
-#include <windows.h>
-
-#include <algorithm>
-#include <cwchar>
-#include <map>
-#include <optional>
-#include <string>
-#include <utility>
-#include <vector>
 
 #ifndef __MINGW32__
 #pragma comment(lib, "dxgi.lib")
@@ -1877,7 +1464,6 @@ inline std::map<PciDeviceId, std::size_t> getPhysicalGpuCounts() {
 
 }  // namespace
 
-// _____________________________________________________________________________________________________________________
 inline std::vector<GPU> getAllGPUs() {
   std::vector<GPU> gpus;
 
@@ -1949,16 +1535,11 @@ inline std::vector<GPU> getAllGPUs() {
 }  // namespace hwinfo
 
 #endif  // HWINFO_WINDOWS
-// Copyright (c) Leon Freist <freist@informatik.uni-freiburg.de>
-// This software is part of HWBenchmark
 
 #ifdef HWINFO_WINDOWS
 
-#include <string>
-
 namespace hwinfo {
 
-// _____________________________________________________________________________________________________________________
 inline MainBoard::MainBoard() {
   utils::WMI::_WMI wmi;
   const std::wstring query_string(L"SELECT Manufacturer, Product, Version, SerialNumber FROM Win32_BaseBoard");
@@ -2001,7 +1582,6 @@ inline MainBoard::MainBoard() {
 
 namespace hwinfo {
 
-// _____________________________________________________________________________________________________________________
 inline std::vector<Network> getAllNetworks() {
   utils::WMI::_WMI wmi;
   const std::wstring query_string(
@@ -2076,19 +1656,13 @@ inline std::vector<Network> getAllNetworks() {
 }  // namespace hwinfo
 
 #endif  // HWINFO_WINDOWS
-// Copyright (c) Leon Freist <freist@informatik.uni-freiburg.de>
-// This software is part of HWBenchmark
 
 #ifdef HWINFO_WINDOWS
-#include <Windows.h>
 
-#include <sstream>
-#include <string>
 #define STATUS_SUCCESS 0x00000000
 
 namespace hwinfo {
 
-// _____________________________________________________________________________________________________________________
 inline OS::OS() {
   {
     // Get endian. This is platform independent...
@@ -2134,18 +1708,11 @@ inline OS::OS() {
 }  // namespace hwinfo
 
 #endif  // HWINFO_WINDOWS
-// Copyright (c) Leon Freist <freist@informatik.uni-freiburg.de>
-// This software is part of HWBenchmark
 
 #ifdef HWINFO_WINDOWS
-#include <Windows.h>
-
-#include <string>
-#include <vector>
 
 namespace hwinfo {
 
-// _____________________________________________________________________________________________________________________
 inline Memory::Memory() {
   utils::WMI::_WMI wmi;
   const std::wstring query_string(
@@ -2196,7 +1763,6 @@ inline Memory::Memory() {
   }
 }
 
-// _____________________________________________________________________________________________________________________
 inline uint64_t Memory::size() const {
   uint64_t sum = 0;
   for (const auto& module : _modules) {
@@ -2205,7 +1771,6 @@ inline uint64_t Memory::size() const {
   return sum;
 }
 
-// _____________________________________________________________________________________________________________________
 inline uint64_t Memory::free() const {
   auto res = utils::WMI::query<std::string>(L"Win32_OperatingSystem", L"FreePhysicalMemory");
   if (res.empty()) {
@@ -2214,7 +1779,6 @@ inline uint64_t Memory::free() const {
   return std::stoll(res.front()) * 1024;
 }
 
-// _____________________________________________________________________________________________________________________
 inline uint64_t Memory::available() const {
   // TODO: Get actual available memory size...
   return free();
@@ -2224,179 +1788,8 @@ inline uint64_t Memory::available() const {
 
 #endif  // HWINFO_WINDOWS
 #elif defined(HWINFO_APPLE)
-// Copyright Leon Freist
-// Author Leon Freist <freist@informatik.uni-freiburg.de>
 
 #ifdef HWINFO_APPLE
-
-#include <CoreFoundation/CoreFoundation.h>
-#include <IOKit/ps/IOPSKeys.h>
-#include <IOKit/ps/IOPowerSources.h>
-
-#include <iostream>
-
-namespace hwinfo {
-
-// =====================================================================================================================
-inline CFDictionaryRef getPowerSource(const int id) {
-  const CFTypeRef powerInfo = IOPSCopyPowerSourcesInfo();
-  if (!powerInfo) {
-    return nullptr;
-  }
-
-  const CFArrayRef powerSources = IOPSCopyPowerSourcesList(powerInfo);
-  if (!powerSources) {
-    CFRelease(powerInfo);
-    return nullptr;
-  }
-
-  const CFDictionaryRef powerSource =
-      IOPSGetPowerSourceDescription(powerInfo, CFArrayGetValueAtIndex(powerSources, id));
-
-  if (!powerSource) {
-    CFRelease(powerSources);
-    CFRelease(powerInfo);
-    return nullptr;
-  }
-
-  CFRetain(powerSource);
-
-  CFRelease(powerSources);
-  CFRelease(powerInfo);
-
-  return powerSource;
-}
-
-// _____________________________________________________________________________________________________________________
-inline std::string getBatteryVendor() { return "<unknown>"; }
-
-// _____________________________________________________________________________________________________________________
-inline std::string getModel() { return "<unknown>"; }
-
-// _____________________________________________________________________________________________________________________
-inline std::string getSerialNumber(std::uint32_t id) {
-  const CFDictionaryRef powerSource = getPowerSource(id);
-  if (!powerSource) {
-    return "<unknown>";
-  }
-
-  // this key is recommended. it may be empty
-  const auto serialNumber =
-      static_cast<CFStringRef>(CFDictionaryGetValue(powerSource, CFSTR(kIOPSHardwareSerialNumberKey)));
-
-  if (!serialNumber) {
-    CFRelease(powerSource);
-    return "<unknown>";
-  }
-
-  char serialNumberStr[256];
-
-  CFStringGetCString(serialNumber, serialNumberStr, sizeof(serialNumberStr), kCFStringEncodingUTF8);
-  CFRelease(powerSource);
-
-  return serialNumberStr;
-}
-
-// _____________________________________________________________________________________________________________________
-inline std::string getTechnology() { return "<unknown>"; }
-
-// _____________________________________________________________________________________________________________________
-inline uint32_t getEnergyFull(std::uint32_t id) {
-  const CFDictionaryRef powerSource = getPowerSource(id);
-  if (!powerSource) {
-    return 0;
-  }
-
-  const auto maxCapacityNum = static_cast<CFNumberRef>(CFDictionaryGetValue(powerSource, CFSTR(kIOPSMaxCapacityKey)));
-  CFRelease(powerSource);
-  if (!maxCapacityNum) {
-    return 0;
-  }
-
-  uint32_t maxCapacity;
-  CFNumberGetValue(maxCapacityNum, kCFNumberIntType, &maxCapacity);
-
-  return maxCapacity;
-}
-
-// _____________________________________________________________________________________________________________________
-inline std::uint32_t Battery::energyNow() const {
-  const CFDictionaryRef powerSource = getPowerSource(_id);
-  if (!powerSource) {
-    return 0;
-  }
-
-  const auto currentCapacityNum =
-      static_cast<CFNumberRef>(CFDictionaryGetValue(powerSource, CFSTR(kIOPSCurrentCapacityKey)));
-  CFRelease(powerSource);
-  if (!currentCapacityNum) {
-    return 0;
-  }
-
-  uint32_t currentCapacity;
-  CFNumberGetValue(currentCapacityNum, kCFNumberIntType, &currentCapacity);
-
-  return currentCapacity;
-}
-
-// _____________________________________________________________________________________________________________________
-inline Battery::State Battery::state() const {
-  const CFDictionaryRef powerSource = getPowerSource(_id);
-  if (!powerSource) {
-    return State::UNKNOWN;
-  }
-
-  const auto isCharging = static_cast<CFBooleanRef>(CFDictionaryGetValue(powerSource, CFSTR(kIOPSIsChargingKey)));
-
-  return isCharging == kCFBooleanTrue ? State::CHARGING : State::DISCHARGING;
-}
-
-// =====================================================================================================================
-// _____________________________________________________________________________________________________________________
-inline std::vector<Battery> getAllBatteries() {
-  std::vector<Battery> batteries;
-
-  const CFTypeRef powerInfo = IOPSCopyPowerSourcesInfo();
-  if (!powerInfo) {
-    return batteries;
-  }
-
-  const CFArrayRef powerSources = IOPSCopyPowerSourcesList(powerInfo);
-  if (!powerSources) {
-    CFRelease(powerInfo);
-    return batteries;
-  }
-
-  const auto numSources = static_cast<std::uint32_t>(CFArrayGetCount(powerSources));
-
-  CFRelease(powerSources);
-  CFRelease(powerInfo);
-
-  for (std::uint32_t i = 0; i < numSources; ++i) {
-    batteries.emplace_back(i);
-    auto& battery = batteries.back();
-    battery._vendor = getBatteryVendor();
-    battery._model = getModel();
-    battery._energyFull = getEnergyFull(i);
-    battery._technology = getTechnology();
-    battery._serial_number = getSerialNumber(i);
-  }
-
-  return batteries;
-}
-
-}  // namespace hwinfo
-
-#endif
-// Copyright (c) Leon Freist <freist@informatik.uni-freiburg.de>
-// This software is part of HWBenchmark
-
-#ifdef HWINFO_APPLE
-
-#include <sys/sysctl.h>
-
-#include <string>
-#include <vector>
 
 namespace hwinfo {
 
@@ -2416,7 +1809,6 @@ inline bool isPowerPC() {
 
 }  // anonymous namespace
 
-// _____________________________________________________________________________________________________________________
 inline std::string getVendor() {
   auto vendor = utils::getSysctlString("machdep.cpu.vendor", "<unknown>");
 
@@ -2430,7 +1822,6 @@ inline std::string getVendor() {
   return vendor;
 }
 
-// _____________________________________________________________________________________________________________________
 inline std::string getModelName() {
   std::string model = utils::getSysctlString("machdep.cpu.brand_string", "<unknown>");
   if (model == "<unknown>" && isAppleSilicon()) {
@@ -2461,10 +1852,8 @@ inline std::string getModelName() {
   return model;
 }
 
-// _____________________________________________________________________________________________________________________
 inline int getNumPhysicalCores() { return utils::getSysctlValue<int>("hw.physicalcpu", 0); }
 
-// _____________________________________________________________________________________________________________________
 inline int getNumLogicalCores() { return utils::getSysctlValue<int>("hw.logicalcpu", 0); }
 
 [[maybe_unused]] inline int64_t getL1CacheSize_Bytes() { return utils::getSysctlValue<int64_t>("hw.l1dcachesize", -1); }
@@ -2473,7 +1862,6 @@ inline int getNumLogicalCores() { return utils::getSysctlValue<int>("hw.logicalc
 
 [[maybe_unused]] inline int64_t getL3CacheSize_Bytes() { return utils::getSysctlValue<int64_t>("hw.l3cachesize", -1); }
 
-// _____________________________________________________________________________________________________________________
 inline std::vector<CPU> getAllCPUs() {
   std::vector<CPU> cpus;
   CPU cpu;
@@ -2491,22 +1879,8 @@ inline std::vector<CPU> getAllCPUs() {
 }  // namespace hwinfo
 
 #endif  // HWINFO_APPLE
-// Copyright Leon Freist
-// Author Leon Freist <freist@informatik.uni-freiburg.de>
-
-#include <cstdint>
 
 #ifdef HWINFO_APPLE
-
-#include <CoreFoundation/CoreFoundation.h>
-#include <IOKit/IOBSD.h>
-#include <IOKit/IOKitLib.h>
-#include <IOKit/storage/IOMedia.h>
-#include <sys/mount.h>
-#include <sys/stat.h>
-
-#include <string>
-#include <unordered_map>
 
 namespace hwinfo {
 
@@ -2788,18 +2162,11 @@ inline std::vector<Disk> getAllDisks() {
 }  // namespace hwinfo
 
 #endif  // HWINFO_APPLE
-// Copyright Leon Freist
-// Author Leon Freist <freist@informatik.uni-freiburg.de>
 
 #ifdef HWINFO_APPLE
 
-#include <regex>
-#include <string>
-#include <vector>
-
 namespace hwinfo {
 
-// _____________________________________________________________________________________________________________________
 inline std::vector<GPU> getAllGPUs() {
   std::vector<GPU> gpus{};
   // TODO: implement
@@ -2809,13 +2176,8 @@ inline std::vector<GPU> getAllGPUs() {
 }  // namespace hwinfo
 
 #endif  // HWINFO_APPLE
-// Copyright (c) Leon Freist <freist@informatik.uni-freiburg.de>
-// This software is part of HWBenchmark
 
 #ifdef HWINFO_APPLE
-
-#include <Availability.h>
-#include <IOKit/IOKitLib.h>
 
 #if defined(__MAC_12_0) && __MAC_OS_X_VERSION_MAX_ALLOWED >= __MAC_12_0
 #define SAFE_IO_MAIN_PORT kIOMainPortDefault
@@ -2865,7 +2227,6 @@ inline std::string get_mainboard_property(CFStringRef property_name) {
   return result.empty() ? "<unknown>" : result;
 }
 
-// _____________________________________________________________________________________________________________________
 inline MainBoard::MainBoard() {
   _vendor = get_mainboard_property(CFSTR("manufacturer"));
   _name = "<unknown>";
@@ -2877,7 +2238,6 @@ inline MainBoard::MainBoard() {
 
 #endif  // HWINFO_APPLE
 #ifdef HWINFO_APPLE
-#include <vector>
 namespace hwinfo {
 inline std::vector<Network> getAllNetworks() {
   std::vector<Network> networks;
@@ -2886,15 +2246,8 @@ inline std::vector<Network> getAllNetworks() {
 }  // namespace hwinfo
 
 #endif  // HWINFO_APPLE
-// Copyright (c) Leon Freist <freist@informatik.uni-freiburg.de>
-// This software is part of HWBenchmark
 
 #ifdef HWINFO_APPLE
-
-#include <fstream>
-#include <regex>
-#include <sstream>
-#include <string>
 
 inline std::string getOSVersionFromPlist() {
   std::ifstream file("/System/Library/CoreServices/SystemVersion.plist");
@@ -2992,7 +2345,6 @@ inline std::string getMarketingName(const std::string& version) {
   }
 }
 
-// _____________________________________________________________________________________________________________________
 inline OS::OS() {
   _name = "macOS";
 
@@ -3027,21 +2379,11 @@ inline OS::OS() {
 }  // namespace hwinfo
 
 #endif  // HWINFO_APPLE
-// Copyright (c) Leon Freist <freist@informatik.uni-freiburg.de>
-// This software is part of HWBenchmark
 
 #ifdef HWINFO_APPLE
 
-#include <mach/mach_host.h>
-#include <mach/mach_init.h>
-#include <mach/vm_statistics.h>
-#include <sys/sysctl.h>
-
-#include <string>
-
 namespace hwinfo {
 
-// _____________________________________________________________________________________________________________________
 inline uint64_t getMemSize() {
   uint64_t memSize;
   size_t size = sizeof(memSize);
@@ -3053,21 +2395,12 @@ inline uint64_t getMemSize() {
   return 0;
 }
 
-// _____________________________________________________________________________________________________________________
 inline Memory::Memory() {
   // TODO: get information for actual memory modules (DIMM)
 }
 
-// _____________________________________________________________________________________________________________________
-inline uint64_t Memory::size() const {
-  uint64_t sum = 0;
-  for (const auto& module : _modules) {
-    sum += module._size_bytes;
-  }
-  return sum;
-}
+inline uint64_t Memory::size() const { return getMemSize(); }
 
-// _____________________________________________________________________________________________________________________
 inline uint64_t Memory::free() const {
   vm_statistics64_data_t vmStats;
   mach_msg_type_number_t infoCount = HOST_VM_INFO64_COUNT;
@@ -3094,7 +2427,6 @@ inline uint64_t Memory::free() const {
   return 0;
 }
 
-// _____________________________________________________________________________________________________________________
 inline uint64_t Memory::available() const {
   int64_t usableMemSize;
   size_t size = sizeof(usableMemSize);
@@ -3110,146 +2442,8 @@ inline uint64_t Memory::available() const {
 
 #endif  // HWINFO_APPLE
 #elif defined(HWINFO_UNIX)
-// Copyright Leon Freist
-// Author Leon Freist <freist@informatik.uni-freiburg.de>
 
 #ifdef HWINFO_UNIX
-
-#include <filesystem>
-#include <fstream>
-
-namespace hwinfo {
-
-static std::filesystem::path base_path("/sys/class/power_supply/");
-
-namespace {
-
-// _____________________________________________________________________________________________________________________
-inline std::string get_vendor(std::uint32_t id) {
-  std::ifstream vendor_file(base_path / ("BAT" + std::to_string(id)) / "manufacturer");
-  std::string vendor;
-  if (vendor_file.is_open()) {
-    getline(vendor_file, vendor);
-    return vendor;
-  }
-  return "<unknown>";
-}
-
-// _____________________________________________________________________________________________________________________
-inline std::string get_model(std::uint32_t id) {
-  std::ifstream vendor_file(base_path / ("BAT" + std::to_string(id)) / "model_name");
-  std::string value;
-  if (vendor_file.is_open()) {
-    getline(vendor_file, value);
-    return value;
-  }
-  return "<unknown>";
-}
-
-// _____________________________________________________________________________________________________________________
-inline std::string get_serial_number(std::uint32_t id) {
-  std::ifstream vendor_file(base_path / ("BAT" + std::to_string(id)) / "serial_number");
-  std::string value;
-  if (vendor_file.is_open()) {
-    getline(vendor_file, value);
-    return value;
-  }
-  return "<unknown>";
-}
-
-// _____________________________________________________________________________________________________________________
-inline std::string get_technology(std::uint32_t id) {
-  std::ifstream vendor_file(base_path / ("BAT" + std::to_string(id)) / "technology");
-  std::string value;
-  if (vendor_file.is_open()) {
-    getline(vendor_file, value);
-    return value;
-  }
-  return "<unknown>";
-}
-
-}  // namespace
-
-// =====================================================================================================================
-// _____________________________________________________________________________________________________________________
-inline uint32_t get_energy_full(std::uint32_t id) {
-  auto path = std::filesystem::path(base_path / ("BAT" + std::to_string(id)) / "energy_full");
-  if (!std::filesystem::exists(path)) {
-    path = std::filesystem::path(base_path / ("BAT" + std::to_string(id)) / "charge_full");
-  }
-  std::ifstream vendor_file(path);
-  std::string value;
-  if (vendor_file.is_open()) {
-    getline(vendor_file, value);
-    try {
-      return std::stoi(value);
-    } catch (const std::invalid_argument& e) {
-      return 0;
-    }
-  }
-  return 0;
-}
-
-// _____________________________________________________________________________________________________________________
-inline uint32_t Battery::energyNow() const {
-  auto path = std::filesystem::path(base_path / ("BAT" + std::to_string(_id)) / "energy_now");
-  if (!std::filesystem::exists(path)) {
-    path = std::filesystem::path(base_path / ("BAT" + std::to_string(_id)) / "charge_now");
-  }
-  std::ifstream vendor_file(path);
-  std::string value;
-  if (vendor_file.is_open()) {
-    getline(vendor_file, value);
-    try {
-      return std::stoi(value);
-    } catch (const std::invalid_argument& e) {
-      return 0;
-    }
-  }
-  return 0;
-}
-
-// _____________________________________________________________________________________________________________________
-inline Battery::State Battery::state() const {
-  std::ifstream vendor_file(base_path / ("BAT" + std::to_string(_id)) / "status");
-  std::string value;
-  if (vendor_file.is_open()) {
-    getline(vendor_file, value);
-    return value == "Charging" ? State::CHARGING : State::DISCHARGING;
-  }
-  return State::UNKNOWN;
-}
-
-// =====================================================================================================================
-// _____________________________________________________________________________________________________________________
-inline std::vector<Battery> getAllBatteries() {
-  std::vector<Battery> batteries;
-  std::uint32_t id = 0;
-  while (std::filesystem::exists(base_path / ("BAT" + std::to_string(id)))) {
-    batteries.emplace_back(id++);
-    auto& battery = batteries.back();
-    battery._vendor = get_vendor(id);
-    battery._model = get_model(id);
-    battery._energyFull = get_energy_full(id);
-    battery._serial_number = get_serial_number(id);
-    battery._technology = get_technology(id);
-  }
-  return batteries;
-}
-
-}  // namespace hwinfo
-
-#endif
-// Copyright (c) Leon Freist <freist@informatik.uni-freiburg.de>
-// This software is part of HWBenchmark
-
-#ifdef HWINFO_UNIX
-
-#include <fstream>
-#include <iterator>
-#include <map>
-#include <string>
-#include <vector>
 
 namespace hwinfo {
 
@@ -3409,7 +2603,6 @@ inline std::map<std::uint32_t, unix_os::cpu::CPU> parse_cpus(
 
 }  // namespace unix_os::cpu
 
-// _____________________________________________________________________________________________________________________
 inline std::vector<CPU> getAllCPUs() {
   std::ifstream file("/proc/cpuinfo");
   if (!file.is_open()) return {};
@@ -3447,22 +2640,14 @@ inline std::vector<CPU> getAllCPUs() {
 }  // namespace hwinfo
 
 #endif  // HWINFO_UNIX
-// Copyright Leon Freist
-// Author Leon Freist <freist@informatik.uni-freiburg.de>
 
 #ifdef HWINFO_UNIX
-
-#include <filesystem>
-#include <fstream>
-#include <map>
-#include <vector>
 
 namespace {
 
 // Linux always considers sectors to be 512 bytes long independently of the devices real block size.
 inline constexpr std::size_t block_size = 512;
 
-// _____________________________________________________________________________________________________________________
 inline std::string read_file(const std::string& path) {
   std::ifstream file(path);
   if (!file) return {};
@@ -3473,7 +2658,6 @@ inline std::string read_file(const std::string& path) {
   return content;
 }
 
-// _____________________________________________________________________________________________________________________
 inline std::string getDiskVendor(const std::filesystem::path& path) {
   std::string result = read_file(path / "device/vendor");
   if (result.empty()) {
@@ -3482,7 +2666,6 @@ inline std::string getDiskVendor(const std::filesystem::path& path) {
   return result;
 }
 
-// _____________________________________________________________________________________________________________________
 inline std::string getDiskModel(const std::filesystem::path& path) {
   std::string result = read_file(path / "device/model");
   if (result.empty()) {
@@ -3491,7 +2674,6 @@ inline std::string getDiskModel(const std::filesystem::path& path) {
   return result;
 }
 
-// _____________________________________________________________________________________________________________________
 inline std::string getDiskSerialNumber(const std::filesystem::path& path) {
   std::string result = read_file(path / "device/serial");
   if (result.empty()) {
@@ -3500,7 +2682,6 @@ inline std::string getDiskSerialNumber(const std::filesystem::path& path) {
   return result;
 }
 
-// _____________________________________________________________________________________________________________________
 inline uint64_t getDiskSize_Bytes(const std::filesystem::path& path) {
   std::ifstream f(path / "size");
   uint64_t size = 0;
@@ -3556,7 +2737,6 @@ inline hwinfo::Disk::Interface getDiskUsbVersion(const std::filesystem::path& di
   return hwinfo::Disk::Interface::USB;
 }
 
-// _____________________________________________________________________________________________________________________
 inline hwinfo::Disk::Interface getDiskInterface(const std::filesystem::path& path) {
   std::string subsystem = std::filesystem::canonical(path / "device").string();
   if (subsystem.find("nvme") != std::string::npos) {
@@ -3575,8 +2755,6 @@ inline hwinfo::Disk::Interface getDiskInterface(const std::filesystem::path& pat
 
 namespace hwinfo {
 
-// =====================================================================================================================
-// _____________________________________________________________________________________________________________________
 inline std::vector<Disk> getAllDisks() {
   std::vector<Disk> disks;
 
@@ -3614,19 +2792,8 @@ inline std::vector<Disk> getAllDisks() {
 }  // namespace hwinfo
 
 #endif  // HWINFO_UNIX
-// Copyright Leon Freist
-// Author Leon Freist <freist@informatik.uni-freiburg.de>
 
 #ifdef HWINFO_UNIX
-
-#include <algorithm>
-#include <array>
-#include <cctype>
-#include <filesystem>
-#include <fstream>
-#include <string>
-#include <utility>
-#include <vector>
 
 namespace hwinfo {
 
@@ -3706,7 +2873,6 @@ inline PciNames lookupPciNames(const std::string& vendor_id, const std::string& 
 
 }  // namespace
 
-// _____________________________________________________________________________________________________________________
 inline std::string read_drm_by_path(const std::string& path) {
   std::ifstream f_drm(path);
   if (!f_drm) {
@@ -3717,7 +2883,6 @@ inline std::string read_drm_by_path(const std::string& path) {
   return ret;
 }
 
-// _____________________________________________________________________________________________________________________
 inline std::vector<std::uint64_t> get_frequencies(const std::string drm_path) {
   // {min, current, max}
   std::vector<std::uint64_t> freqs(3, 0);
@@ -3742,7 +2907,6 @@ inline std::vector<std::uint64_t> get_frequencies(const std::string drm_path) {
   return freqs;
 }
 
-// _____________________________________________________________________________________________________________________
 inline std::vector<GPU> getAllGPUs() {
   std::vector<GPU> gpus{};
   int id = 0;
@@ -3777,13 +2941,8 @@ inline std::vector<GPU> getAllGPUs() {
 }  // namespace hwinfo
 
 #endif  // HWINFO_UNIX
-// Copyright (c) Leon Freist <freist@informatik.uni-freiburg.de>
-// This software is part of HWBenchmark
 
 #ifdef HWINFO_UNIX
-
-#include <fstream>
-#include <vector>
 
 namespace hwinfo {
 
@@ -3805,7 +2964,6 @@ inline std::string get_dmi_by_name(const std::string& name) {
   return "<unknown>";
 }
 
-// _____________________________________________________________________________________________________________________
 inline MainBoard::MainBoard() {
   _vendor = get_dmi_by_name("board_vendor");
   _name = get_dmi_by_name("board_name");
@@ -3817,16 +2975,6 @@ inline MainBoard::MainBoard() {
 
 #endif  // HWINFO_UNIX
 #ifdef HWINFO_UNIX
-#include <arpa/inet.h>
-#include <ifaddrs.h>
-#include <net/if.h>
-#include <netpacket/packet.h>
-#include <sys/ioctl.h>
-
-#include <cstring>
-#include <fstream>
-#include <string>
-#include <vector>
 
 namespace hwinfo {
 
@@ -3919,20 +3067,11 @@ inline std::vector<Network> getAllNetworks() {
 }  // namespace hwinfo
 
 #endif
-// Copyright (c) Leon Freist <freist@informatik.uni-freiburg.de>
-// This software is part of HWBenchmark
 
 #ifdef HWINFO_UNIX
 
-#include <sys/stat.h>
-#include <sys/utsname.h>
-
-#include <fstream>
-#include <string>
-
 namespace hwinfo {
 
-// _____________________________________________________________________________________________________________________
 inline OS::OS() {
   {  // name and version
     std::string line;
@@ -3978,21 +3117,11 @@ inline OS::OS() {
 }  // namespace hwinfo
 
 #endif  // HWINFO_UNIX
-// Copyright (c) Leon Freist <freist@informatik.uni-freiburg.de>
-// This software is part of HWBenchmark
 
 #ifdef HWINFO_UNIX
 
-#include <dlfcn.h>
-#include <unistd.h>
-
-#include <fstream>
-#include <string>
-#include <vector>
-
 namespace hwinfo {
 
-// _____________________________________________________________________________________________________________________
 struct MemInfo {
   uint64_t total = 0;
   uint64_t free = 0;
@@ -4008,19 +3137,6 @@ inline void get_from_sysconf(MemInfo& mi) {
   }
   if (available_pages > 0 && page_size > 0) {
     mi.available = available_pages * page_size;
-  }
-}
-
-inline void set_value(std::string& line, uint64_t* dst) {
-  auto split_line = utils::split(line, ":");
-  if (split_line.size() == 2) {
-    auto& value = split_line[1];
-    utils::strip(value);
-    auto space = value.find(' ');
-    if (space != std::string::npos) {
-      auto a = std::string(value.begin(), value.begin() + static_cast<int64_t>(space));
-      *dst = (std::stoull(a) * 1024);
-    }
   }
 }
 
@@ -4066,24 +3182,20 @@ inline MemInfo parse_meminfo() {
   return mi;
 }
 
-// _____________________________________________________________________________________________________________________
 inline Memory::Memory() {
   // TODO: get information for actual memory modules (DIMM)
 }
 
-// _____________________________________________________________________________________________________________________
 inline uint64_t Memory::size() const {
   auto meminfo = parse_meminfo();
   return utils::round_to_next_power_of_2(meminfo.total);
 }
 
-// _____________________________________________________________________________________________________________________
 inline uint64_t Memory::free() const {
   auto meminfo = parse_meminfo();
   return meminfo.free;
 }
 
-// _____________________________________________________________________________________________________________________
 inline uint64_t Memory::available() const {
   auto meminfo = parse_meminfo();
   return meminfo.available;

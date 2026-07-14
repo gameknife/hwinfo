@@ -31,14 +31,12 @@ int main(/*int argc, char** argv*/) {
       std::cout << std::left << std::setw(20) << ("  core " + std::to_string(core.id) + ":") << "\n"
                 << std::left << std::setw(20) << "   SMT: " << (core.smt ? "yes" : "no") << "\n"
                 << std::left << std::setw(20) << "   cache:" << "\n"
-                << std::left << std::setw(20)
-                << "    L1 Data:" << unit_prefix_to(core.cache.l1_data, IECPrefix::KIBI) << " KiB\n"
+                << std::left << std::setw(20) << "    L1 Data:" << unit_prefix_to(core.cache.l1_data, IECPrefix::KIBI)
+                << " KiB\n"
                 << std::left << std::setw(20)
                 << "    L1 Inst.:" << unit_prefix_to(core.cache.l1_instruction, IECPrefix::KIBI) << " KiB\n"
-                << std::left << std::setw(20) << "    L2:" << unit_prefix_to(core.cache.l2, IECPrefix::KIBI)
-                << " KiB\n"
-                << std::left << std::setw(20) << "    L3:" << unit_prefix_to(core.cache.l3, IECPrefix::KIBI)
-                << " KiB\n"
+                << std::left << std::setw(20) << "    L2:" << unit_prefix_to(core.cache.l2, IECPrefix::KIBI) << " KiB\n"
+                << std::left << std::setw(20) << "    L3:" << unit_prefix_to(core.cache.l3, IECPrefix::KIBI) << " KiB\n"
                 << std::left << std::setw(20)
                 << "   regular freq.:" << unit_prefix_to(core.regular_frequency_hz, SiPrefix::MEGA) << " MHz\n"
                 << std::left << std::setw(20)
@@ -61,14 +59,12 @@ int main(/*int argc, char** argv*/) {
     std::cout << "GPU " << gpu.id() << "\n"
               << std::left << std::setw(20) << " vendor: " << gpu.vendor() << "\n"
               << std::left << std::setw(20) << " model: " << gpu.name() << "\n"
-              << std::left << std::setw(20) << " driver version: " << gpu.driverVersion() << "\n"
               << std::left << std::setw(20)
               << " dedicated memory: " << unit_prefix_to(gpu.dedicated_memory_Bytes(), IECPrefix::GIBI) << " GiB\n"
               << std::left << std::setw(20)
               << " shared memory: " << unit_prefix_to(gpu.shared_memory_Bytes(), IECPrefix::GIBI) << " GiB\n"
               << std::left << std::setw(20) << " frequency: " << unit_prefix_to(gpu.frequency_hz(), SiPrefix::MEGA)
               << " MHz\n"
-              << std::left << std::setw(20) << " cores: " << gpu.num_cores() << "\n"
               << std::left << std::setw(20) << " vendor_id: " << gpu.vendor_id() << "\n"
               << std::left << std::setw(20) << " device_id: " << gpu.device_id() << "\n";
   }
@@ -77,8 +73,8 @@ int main(/*int argc, char** argv*/) {
   std::cout << "----------------------------------- RAM -----------------------------------\n"
             << std::left << std::setw(20) << "size: " << unit_prefix_to(memory.size(), IECPrefix::GIBI) << "\n"
             << std::left << std::setw(20) << "free: " << unit_prefix_to(memory.free(), IECPrefix::GIBI) << "\n"
-            << std::left << std::setw(20)
-            << "available: " << unit_prefix_to(memory.available(), IECPrefix::GIBI) << "\n";
+            << std::left << std::setw(20) << "available: " << unit_prefix_to(memory.available(), IECPrefix::GIBI)
+            << "\n";
   for (const auto& module : memory.modules()) {
     std::cout << std::left << std::setw(20) << (" RAM " + std::to_string(module.id)) << "\n"
               << std::left << std::setw(20) << "  vendor: " << module.vendor << "\n"
@@ -96,22 +92,6 @@ int main(/*int argc, char** argv*/) {
             << std::left << std::setw(20) << "version: " << main_board.version() << "\n"
             << std::left << std::setw(20) << "serial number: " << main_board.serialNumber() << "\n";
 
-  std::vector<hwinfo::Battery> batteries = hwinfo::getAllBatteries();
-
-  std::cout << "------------------------------- Batteries ---------------------------------\n";
-  if (!batteries.empty()) {
-    for (auto& battery : batteries) {
-      std::cout << std::left << std::setw(20) << ("Battery " + std::to_string(battery.id()) + ":") << "\n"
-                << std::left << std::setw(20) << " vendor: " << battery.vendor() << "\n"
-                << std::left << std::setw(20) << " model: " << battery.model() << "\n"
-                << std::left << std::setw(20) << " serial number: " << battery.serialNumber() << "\n"
-                << std::left << std::setw(20) << " state: " << battery.state() << "\n"
-                << std::left << std::setw(20) << " capacity: " << battery.capacity() << "\n";
-    }
-  } else {
-    std::cout << "No Batteries installed or detected\n";
-  }
-
   std::vector<hwinfo::Disk> disks = hwinfo::getAllDisks();
   std::cout << "--------------------------------- Disks -----------------------------------\n";
   if (!disks.empty()) {
@@ -123,7 +103,8 @@ int main(/*int argc, char** argv*/) {
                 << std::left << std::setw(20) << " interface: " << disk.disk_interface() << "\n"
                 << std::left << std::setw(20) << " solidstate: " << disk.is_solid_state() << "\n"
                 << std::left << std::setw(20) << " size: " << unit_prefix_to(disk.size(), IECPrefix::GIBI) << " GiB\n"
-                << std::left << std::setw(20) << " mount points: " << hwinfo::utils::join(disk.mount_points(), ", ") << "\n";
+                << std::left << std::setw(20) << " mount points: " << hwinfo::utils::join(disk.mount_points(), ", ")
+                << "\n";
     }
   } else {
     std::cout << "No Disks installed or detected\n";
