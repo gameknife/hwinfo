@@ -2,8 +2,6 @@
 // Author Leon Freist <freist@informatik.uni-freiburg.de>
 
 #include <hwinfo/hwinfo.h>
-#include <hwinfo/utils/unit.h>
-#include <hwinfo/utils/stringutils.h>
 
 #include <iomanip>
 #include <iostream>
@@ -123,6 +121,7 @@ int main(/*int argc, char** argv*/) {
                 << std::left << std::setw(20) << " model: " << disk.model() << "\n"
                 << std::left << std::setw(20) << " serial number: " << disk.serial_number() << "\n"
                 << std::left << std::setw(20) << " interface: " << disk.disk_interface() << "\n"
+                << std::left << std::setw(20) << " solidstate: " << disk.is_solid_state() << "\n"
                 << std::left << std::setw(20) << " size: " << unit_prefix_to(disk.size(), IECPrefix::GIBI) << " GiB\n"
                 << std::left << std::setw(20) << " mount points: " << hwinfo::utils::join(disk.mount_points(), ", ") << "\n";
     }
