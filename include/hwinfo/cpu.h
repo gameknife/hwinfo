@@ -4,26 +4,12 @@
 #pragma once
 
 #include <hwinfo/platform.h>
-#include <hwinfo/utils/wmi_wrapper.h>
 
-#include <array>
-#include <chrono>
 #include <cstdint>
-#include <map>
 #include <string>
 #include <vector>
 
-using namespace std::chrono_literals;
-
 namespace hwinfo {
-
-namespace monitor::cpu {
-
-HWINFO_API double utilization(std::chrono::milliseconds sleep = 200ms);
-HWINFO_API std::vector<double> core_utilization(std::chrono::milliseconds sleep = 200ms);
-HWINFO_API std::vector<int64_t> current_frequency_hz();
-
-}  // namespace monitor::cpu
 
 class HWINFO_API CPU {
   friend HWINFO_API std::vector<CPU> getAllCPUs();

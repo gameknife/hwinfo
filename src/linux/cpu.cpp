@@ -5,75 +5,16 @@
 
 #ifdef HWINFO_UNIX
 
-#include <chrono>
-#include <cmath>
 #include <fstream>
 #include <iterator>
 #include <map>
 #include <string>
-#include <thread>
 #include <vector>
 
 #include "hwinfo/cpu.h"
 #include "hwinfo/unix/cpu.h"
 #include "hwinfo/utils/stringutils.h"
 #include "hwinfo/utils/unit.h"
-
-struct Jiffies {
-  Jiffies() {
-    working = -1;
-    all = -1;
-  }
-
-  Jiffies(int64_t _all, int64_t _working) {
-    all = _all;
-    working = _working;
-  }
-
-  int64_t working;
-  int64_t all;
-};
-
-namespace {
-
-bool jiffies_initialized = false;
-
-Jiffies get_jiffies(int index) {
-  std::ifstream filestat("/proc/stat");
-  if (!filestat.is_open()) {
-    return {};
-  }
-
-  for (int i = 0; i < index; ++i) {
-    if (!filestat.ignore(std::numeric_limits<std::streamsize>::max(), '\n')) {
-      break;
-    }
-  }
-  std::string line;
-  std::getline(filestat, line);
-
-  std::istringstream iss(line);
-  std::vector<std::string> results(std::istream_iterator<std::string>{iss}, std::istream_iterator<std::string>());
-
-  const int64_t jiffies_0 = std::stol(results[1]);
-  const int64_t jiffies_1 = std::stol(results[2]);
-  const int64_t jiffies_2 = std::stol(results[3]);
-  const int64_t jiffies_3 = std::stol(results[4]);
-  const int64_t jiffies_4 = std::stol(results[5]);
-  const int64_t jiffies_5 = std::stol(results[6]);
-  const int64_t jiffies_6 = std::stol(results[7]);
-  const int64_t jiffies_7 = std::stol(results[8]);
-  const int64_t jiffies_8 = std::stol(results[9]);
-  const int64_t jiffies_9 = std::stol(results[10]);
-
-  int64_t all = jiffies_0 + jiffies_1 + jiffies_2 + jiffies_3 + jiffies_4 + jiffies_5 + jiffies_6 + jiffies_7 +
-                jiffies_8 + jiffies_9;
-  int64_t working = jiffies_0 + jiffies_1 + jiffies_2;
-
-  return {all, working};
-}
-
-}  // namespace
 
 namespace hwinfo {
 
@@ -233,135 +174,6 @@ std::map<std::uint32_t, unix_os::cpu::CPU> parse_cpus(
 
 }  // namespace unix_os::cpu
 
-namespace monitor::cpu {
-
-// _____________________________________________________________________________________________________________________
-std::vector<std::uint64_t> currentClockSpeed_Hz() {
-  std::vector<std::uint64_t> res;
-  for (int core_id = 0; /* breaks, if i is no valid cpu id */; ++core_id) {
-    std::uint64_t frequency_hz =
-        readSysfsUint("/sys/devices/system/cpu/cpu" + std::to_string(core_id) + "/cpufreq/scaling_cur_freq");
-    if (frequency_hz == std::numeric_limits<std::uint64_t>::max()) {
-      break;
-    }
-    res.push_back(frequency_hz);
-  }
-
-  return res;
-}
-
-// _____________________________________________________________________________________________________________________
-void init_jiffies() {
-  if (!jiffies_initialized) {
-    // Sleep 1 sec just for the start cause the usage needs to have a delta value which is depending on the unix file
-    // read it's just for the init, you don't need to wait if the delta is already created ...
-    std::this_thread::sleep_for(1s);
-    jiffies_initialized = true;
-  }
-}
-
-// _____________________________________________________________________________________________________________________
-double utilization([[maybe_unused]] std::chrono::milliseconds sleep) {
-  init_jiffies();
-  // TODO: Leon Freist a socket max num and a socket id inside the CPU could make it work with all sockets
-  //       I will not support it because I only have a 1 socket target device
-  static Jiffies last = Jiffies();
-
-  Jiffies current = get_jiffies(0);
-
-  auto total_over_period = static_cast<double>(current.all - last.all);
-  auto work_over_period = static_cast<double>(current.working - last.working);
-
-  last = current;
-
-  const double utilization = work_over_period / total_over_period;
-  if (utilization < 0 || utilization > 1 || std::isnan(utilization)) {
-    return -1.0;
-  }
-  return utilization;
-}
-
-// _____________________________________________________________________________________________________________________
-double coreUtilization(int thread_index) {
-  init_jiffies();
-  // TODO: Leon Freist a socket max num and a socket id inside the CPU could make it work with all sockets
-  //       I will not support it because I only have a 1 socket target device
-  static std::vector<Jiffies> last(0);
-  if (last.empty()) {
-    last.resize(std::thread::hardware_concurrency());
-  }
-
-  Jiffies current = get_jiffies(thread_index + 1);  // thread_index works only with 1 socket right now
-
-  auto total_over_period = static_cast<double>(current.all - last[thread_index].all);
-  auto work_over_period = static_cast<double>(current.working - last[thread_index].working);
-
-  last[thread_index] = current;
-
-  const double percentage = work_over_period / total_over_period;
-  if (percentage < 0 || percentage > 100 || std::isnan(percentage)) {
-    return -1.0;
-  }
-  return percentage;
-}
-
-// _____________________________________________________________________________________________________________________
-std::vector<double> core_utilization() {
-  std::vector<double> thread_utility(std::thread::hardware_concurrency());
-  for (std::size_t thread_idx = 0; thread_idx < thread_utility.size(); ++thread_idx) {
-    thread_utility[thread_idx] = coreUtilization(thread_idx);
-  }
-  return thread_utility;
-}
-
-}  // namespace monitor::cpu
-
-// CPU Temp -> Works | But requires Im_sensors
-// double CPU::currentTemperature_Celsius() const {
-//     if (!std::ifstream("/etc/sensors3.conf"))
-//     {
-//       std::cout << "The lm-sensors, the tool for monitoring your system's temperature, needs to be configured. Please
-//       set it up." << '\n';
-//       // Configure lm-sensors if not already configured
-//       std::string detect_command = "sudo sensors-detect";
-//       std::system(detect_command.c_str());
-//     }
-
-//     // TODO: Leon Freist a socket max num and a socket id inside the CPU could make it work with all sockets
-//     //       I will not support it because I only have a 1 socket target device
-//     const int Socked_id = 0;
-
-//     // Command to get temperature data using 'sensors' command
-//     std::string command = "sensors | grep 'Package id " + std::to_string(Socked_id) + "' | awk '{print $4}'";
-
-//     // Open a pipe to execute the command and capture its output
-//     FILE* pipe = popen(command.c_str(), "r");
-//     if (!pipe) {
-//         std::cerr << "Error executing command." << '\n';
-//         return -1.0; // Return a negative value to indicate an error
-//     }
-
-//     char buffer[128];
-//     std::string result = "";
-
-//     // Read the output of the command into 'result'
-//     while (!feof(pipe)) {
-//         if (fgets(buffer, sizeof(buffer), pipe) != NULL) {
-//             result += buffer;
-//         }
-//     }
-
-//     // Close the pipe
-//     pclose(pipe);
-
-//     // Convert the result (string) to a double
-//     double temperature = -1.0; // Default value in case of conversion failure
-//     std::istringstream(result) >> temperature;
-
-//     return temperature;
-// }
-
-// =====================================================================================================================
 // _____________________________________________________________________________________________________________________
 std::vector<CPU> getAllCPUs() {
   std::ifstream file("/proc/cpuinfo");

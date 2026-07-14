@@ -106,7 +106,6 @@ The CMake options control which components will be built and available in the li
 - `HWINFO_DISK` "Enable disk detection" (default to `ON`)
 - `HWINFO_RAM` "Enable RAM detection" (default to `ON`)
 - `HWINFO_GPU` "Enable GPU detection" (default to `ON`)
-- `HWINFO_GPU_OPENCL` "Enable usage of OpenCL in GPU information" (default to `OFF`)
 - `HWINFO_BATTERY` "Enable battery detection" (default to `ON`)
 
 ## Build `hwinfo`

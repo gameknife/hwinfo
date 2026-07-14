@@ -7,19 +7,96 @@
 #ifdef HWINFO_UNIX
 
 #include "hwinfo/gpu.h"
-#include "hwinfo/utils/PCIMapper.h"
+#include "hwinfo/utils/stringutils.h"
 #include "hwinfo/utils/unit.h"
 
-#ifdef USE_OCL
-#include <hwinfo/opencl/device.h>
-#endif
-
+#include <algorithm>
+#include <array>
+#include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace hwinfo {
+
+namespace {
+
+struct PciNames {
+  std::string vendor;
+  std::string device;
+};
+
+std::string normalizePciId(std::string id) {
+  utils::strip(id);
+  if (utils::starts_with(id, "0x")) {
+    id.erase(0, 2);
+  }
+  std::transform(id.begin(), id.end(), id.begin(),
+                 [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  return id;
+}
+
+PciNames lookupPciNames(const std::string& vendor_id, const std::string& device_id) {
+  static constexpr std::array<const char*, 2> database_paths = {
+      "/usr/share/hwdata/pci.ids",
+      "/usr/share/misc/pci.ids",
+  };
+
+  const std::string wanted_vendor = normalizePciId(vendor_id);
+  const std::string wanted_device = normalizePciId(device_id);
+  PciNames names;
+
+  for (const char* database_path : database_paths) {
+    std::ifstream database(database_path);
+    if (!database) {
+      continue;
+    }
+
+    bool in_vendor = false;
+    std::string line;
+    while (std::getline(database, line)) {
+      if (line.empty() || line[0] == '#') {
+        continue;
+      }
+
+      if (line[0] != '\t') {
+        in_vendor = line.size() >= 4 && normalizePciId(line.substr(0, 4)) == wanted_vendor;
+        if (in_vendor) {
+          names.vendor = line.substr(4);
+          utils::strip(names.vendor);
+        } else if (!names.vendor.empty()) {
+          break;
+        }
+        continue;
+      }
+
+      if (!in_vendor || line.size() < 5 || line[1] == '\t') {
+        continue;
+      }
+      if (normalizePciId(line.substr(1, 4)) == wanted_device) {
+        names.device = line.substr(5);
+        utils::strip(names.device);
+        return names;
+      }
+    }
+    if (!names.vendor.empty()) {
+      return names;
+    }
+  }
+
+  if (wanted_vendor == "10de") {
+    names.vendor = "NVIDIA";
+  } else if (wanted_vendor == "1002" || wanted_vendor == "1022") {
+    names.vendor = "AMD";
+  } else if (wanted_vendor == "8086") {
+    names.vendor = "Intel";
+  }
+  return names;
+}
+
+}  // namespace
 
 // _____________________________________________________________________________________________________________________
 std::string read_drm_by_path(const std::string& path) {
@@ -60,7 +137,6 @@ std::vector<std::uint64_t> get_frequencies(const std::string drm_path) {
 // _____________________________________________________________________________________________________________________
 std::vector<GPU> getAllGPUs() {
   std::vector<GPU> gpus{};
-  PCIMapper pci = PCI::getMapper();
   int id = 0;
   while (true) {
     GPU gpu;
@@ -79,28 +155,14 @@ std::vector<GPU> getAllGPUs() {
       id++;
       continue;
     }
-    const PCIVendor& vendor = pci[gpu._vendor_id];
-    const PCIDevice device = vendor[gpu._device_id];
-    gpu._vendor = vendor.vendor_name;
-    gpu._name = vendor[gpu._device_id].device_name;
+    const auto names = lookupPciNames(gpu._vendor_id, gpu._device_id);
+    gpu._vendor = names.vendor.empty() ? gpu._vendor_id : names.vendor;
+    gpu._name = names.device.empty() ? gpu._device_id : names.device;
     auto frequencies = get_frequencies(path);
     gpu._frequency_hz = frequencies[2];
     gpus.push_back(std::move(gpu));
     id++;
   }
-#ifdef USE_OCL
-  auto cl_gpus = opencl_::DeviceManager::get_list<opencl_::Filter::GPU>();
-  for (auto& gpu : gpus) {
-    for (auto* cl_gpu : cl_gpus) {
-      if (cl_gpu->name().find(gpu._device_id)) {
-        gpu._driverVersion = cl_gpu->driver_version();
-        gpu._frequency_MHz = static_cast<int64_t>(cl_gpu->clock_frequency_MHz());
-        gpu._num_cores = static_cast<int>(cl_gpu->cores());
-        gpu._memory_Bytes = static_cast<int64_t>(cl_gpu->memory_Bytes());
-      }
-    }
-  }
-#endif  // USE_OCL
   return gpus;
 }
 
