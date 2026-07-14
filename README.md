@@ -276,7 +276,14 @@ Windows 可以直接运行已经固化默认门槛的脚本：
 build_embed.bat
 ```
 
-输出为 `build/bin/hardware_requirements_embedded.exe`。脚本会在配置前检查本地 PassMark CSV 是否存在。
+Linux、macOS 或 Git Bash 使用：
+
+```sh
+./build_embed.sh
+```
+
+Windows 输出为 `build/bin/hardware_requirements_embedded.exe`，其他平台输出为
+`build/bin/hardware_requirements_embedded`。脚本会在配置前检查本地 PassMark CSV 是否存在。
 
 也可以通过 CMake 手动指定门槛：
 
