@@ -225,6 +225,30 @@ inline std::string normalize_model(const std::string& value, bool relaxed) {
   return join_model_tokens(tokenize(value), relaxed);
 }
 
+inline bool fuzzy_model_prefix_distance(const std::string& first, const std::string& second,
+                                        std::size_t& distance) {
+  const auto first_tokens = tokenize(first);
+  const auto second_tokens = tokenize(second);
+  const auto& shorter = first_tokens.size() <= second_tokens.size() ? first_tokens : second_tokens;
+  const auto& longer = first_tokens.size() <= second_tokens.size() ? second_tokens : first_tokens;
+  if (shorter.size() < 2 || shorter.size() == longer.size() ||
+      !std::equal(shorter.begin(), shorter.end(), longer.begin())) {
+    return false;
+  }
+
+  // A family name such as "GeForce RTX" is too broad to identify a model. Require
+  // at least one model token containing a digit before accepting a prefix match.
+  const bool has_model_number = std::any_of(shorter.begin(), shorter.end(), [](const std::string& token) {
+    return std::any_of(token.begin(), token.end(), [](unsigned char c) { return std::isdigit(c) != 0; });
+  });
+  if (!has_model_number) {
+    return false;
+  }
+
+  distance = longer.size() - shorter.size();
+  return true;
+}
+
 inline std::string normalize_vendor(const std::string& vendor, const std::string& model = {}) {
   const std::string combined = ascii_lower(vendor + " " + model);
   if (combined.find("nvidia") != std::string::npos || combined.find("geforce") != std::string::npos ||
@@ -482,6 +506,8 @@ class GpuCatalog {
     std::vector<std::size_t> pci_matches;
     std::vector<std::size_t> strict_matches;
     std::vector<std::size_t> relaxed_matches;
+    std::vector<std::size_t> fuzzy_matches;
+    std::size_t fuzzy_distance = std::numeric_limits<std::size_t>::max();
 
     for (std::size_t i = 0; i < entries_.size(); ++i) {
       const auto& entry = entries_[i];
@@ -495,11 +521,22 @@ class GpuCatalog {
       }
 
       auto consider_name = [&](const std::string& candidate) {
-        if (!strict_key.empty() && detail::normalize_model(candidate, false) == strict_key) {
+        const auto candidate_strict_key = detail::normalize_model(candidate, false);
+        if (!strict_key.empty() && candidate_strict_key == strict_key) {
           detail::add_unique(strict_matches, i);
         }
         if (!relaxed_key.empty() && detail::normalize_model(candidate, true) == relaxed_key) {
           detail::add_unique(relaxed_matches, i);
+        }
+        std::size_t distance = 0;
+        if (!strict_key.empty() && detail::fuzzy_model_prefix_distance(strict_key, candidate_strict_key, distance)) {
+          if (distance < fuzzy_distance) {
+            fuzzy_distance = distance;
+            fuzzy_matches.clear();
+          }
+          if (distance == fuzzy_distance) {
+            detail::add_unique(fuzzy_matches, i);
+          }
         }
       };
       consider_name(entry.canonical_model);
@@ -508,7 +545,11 @@ class GpuCatalog {
       }
     }
 
-    const auto& matches = !pci_matches.empty() ? pci_matches : (!strict_matches.empty() ? strict_matches : relaxed_matches);
+    const bool using_fuzzy_match = pci_matches.empty() && strict_matches.empty() && relaxed_matches.empty();
+    const auto& matches = !pci_matches.empty() ? pci_matches
+                          : !strict_matches.empty() ? strict_matches
+                          : !relaxed_matches.empty() ? relaxed_matches
+                                                     : fuzzy_matches;
     GpuLookupResult result;
     if (matches.empty()) {
       return result;
@@ -516,6 +557,20 @@ class GpuCatalog {
     if (matches.size() == 1) {
       result.status = GpuLookupStatus::MATCHED;
       result.entry = entries_[matches.front()];
+      return result;
+    }
+    if (using_fuzzy_match) {
+      // Driver names often omit qualifiers such as VRAM size. When several
+      // equally close catalog variants remain, use the lowest score so an
+      // uncertain fuzzy match cannot overstate the detected GPU's capability.
+      const auto weakest = std::min_element(matches.begin(), matches.end(), [&](std::size_t left, std::size_t right) {
+        if (entries_[left].score != entries_[right].score) {
+          return entries_[left].score < entries_[right].score;
+        }
+        return entries_[left].canonical_model < entries_[right].canonical_model;
+      });
+      result.status = GpuLookupStatus::MATCHED;
+      result.entry = entries_[*weakest];
       return result;
     }
     result.status = GpuLookupStatus::AMBIGUOUS;

@@ -264,7 +264,40 @@ PassMark G3D 快照：
 python tools/update_passmark_gpu_catalog.py --acknowledge-terms
 ```
 
-生成的原始页面和 CSV 位于 `data/local/`。该目录已被 Git 忽略；PassMark 数据受版权保护，不应在未获得
+如已获得 gpuinfo.org API 使用许可，还可以在同一次更新中枚举 Windows desktop 设备名称。匹配成功后，以 gpuinfo 名称
+替换 PassMark 名称并写入 `canonical_model`：
+
+```sh
+python tools/update_passmark_gpu_catalog.py --acknowledge-terms --include-gpuinfo
+```
+
+`--include-gpuinfo` 必须在每次需要别名增强时显式指定。只运行前一个 PassMark 命令会重写 CSV，但不会抓取 gpuinfo.org，
+也不会保留上一次生成的 gpuinfo 型号。PassMark 仍然只提供性能分数和排名；gpuinfo 的设备上报名称作为最终规范名称。
+原 PassMark 名称及同一条目下其余匹配到的 gpuinfo 名称会写入 `aliases`。例如：
+
+```csv
+canonical_model,score,rank,vendor,aliases,vendor_id,device_id
+NVIDIA GeForce RTX 3050,10744,274,,GeForce RTX 3050 6GB,,
+```
+
+同一 PassMark 条目匹配到多个 gpuinfo 名称时，生成器优先采用报告数最多的名称作为 `canonical_model`，其余名称保留为
+别名。如果一个缺少显存容量等限定信息的 gpuinfo 名称同时接近多个 PassMark 变体，则关联到其中分数最低的变体，
+避免高估硬件性能。
+
+生成文件位于：
+
+| 文件 | 内容 | 生成条件 |
+| --- | --- | --- |
+| `data/local/passmark_gpu_catalog.csv` | PassMark 分数；增强模式下使用 gpuinfo 规范型号及兼容别名 | 始终生成 |
+| `data/local/passmark_gpu_list.html` | 未修改的 PassMark 原始页面 | 始终生成 |
+| `data/local/vulkan_gpuinfo_devices.json` | 未修改的 gpuinfo.org desktop 设备响应 | 使用 `--include-gpuinfo` 时生成 |
+
+gpuinfo.org 的设备列表由社区提交，数据采用 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)；其网站说明批量 API
+访问需要联系维护者。脚本只发起一次完整列表请求并缓存原始 JSON，不会逐设备抓取。也可使用
+`--gpuinfo-input path/to/devices.json` 从已经保存的 API 响应离线合并。默认使用 Windows 名称；Linux 可通过
+`--gpuinfo-platform linux` 指定。
+
+`data/local/` 已被 Git 忽略；PassMark 数据受版权保护，不应在未获得
 授权的情况下提交或再分发。核心代码和测试不依赖该数据。
 
 ### 将目录和要求固化到本地二进制

@@ -22,8 +22,12 @@ req::GpuCatalog makeCatalog() {
       "# retrieved_at=2026-07-14T00:00:00Z\n"
       "canonical_model,score,rank,vendor,aliases,vendor_id,device_id\n"
       "GeForce GTX 1060,100,4,NVIDIA,GTX 1060,,\n"
+      "NVIDIA GeForce RTX 3050,140,7,NVIDIA,GeForce RTX 3050 6GB,,\n"
+      "GeForce RTX 3050 8GB,150,6,NVIDIA,,,\n"
       "GeForce RTX 3060,200,2,NVIDIA,,,\n"
       "GeForce RTX 3060 Laptop GPU,160,3,NVIDIA,,,\n"
+      "GeForce RTX 4050 6GB,240,9,NVIDIA,,,\n"
+      "GeForce RTX 4050 8GB,250,8,NVIDIA,,,\n"
       "Radeon RX 580,90,5,AMD,,,\n"
       "Intel UHD Graphics 630,20,6,Intel,,,\n"
       "GeForce RTX 4090,400,1,NVIDIA,,10de,2684\n");
@@ -47,7 +51,7 @@ req::HardwareSnapshot capableSnapshot() {
 void testCatalogLookup() {
   const auto catalog = makeCatalog();
   expect(catalog.source() == "unit test", "catalog source metadata should load");
-  expect(catalog.entries().size() == 6, "all catalog rows should load");
+  expect(catalog.entries().size() == 10, "all catalog rows should load");
 
   const auto relaxed = catalog.lookup("RTX 3060");
   expect(relaxed.status == req::GpuLookupStatus::MATCHED, "a unique relaxed model should match");
@@ -56,6 +60,26 @@ void testCatalogLookup() {
   const auto driver_name = catalog.lookup("NVIDIA GeForce RTX 3060 Laptop GPU", "NVIDIA");
   expect(driver_name.status == req::GpuLookupStatus::MATCHED, "driver prefixes should normalize");
   expect(driver_name.entry.score == 160, "laptop score should remain distinct");
+
+  const auto gpuinfo_name = catalog.lookup("NVIDIA GeForce RTX 3050", "NVIDIA");
+  expect(gpuinfo_name.status == req::GpuLookupStatus::MATCHED, "a gpuinfo canonical model should match directly");
+  expect(gpuinfo_name.entry.canonical_model == "NVIDIA GeForce RTX 3050",
+         "gpuinfo model names should remain canonical");
+
+  const auto passmark_alias = catalog.lookup("GeForce RTX 3050 6GB", "NVIDIA");
+  expect(passmark_alias.status == req::GpuLookupStatus::MATCHED, "the original PassMark model should remain an alias");
+  expect(passmark_alias.entry.canonical_model == "NVIDIA GeForce RTX 3050",
+         "a PassMark alias should resolve to the gpuinfo canonical model");
+
+  const auto fuzzy_driver_name = catalog.lookup("NVIDIA GeForce RTX 4050", "NVIDIA");
+  expect(fuzzy_driver_name.status == req::GpuLookupStatus::MATCHED,
+         "a driver model missing a catalog qualifier should fuzzy-match");
+  expect(fuzzy_driver_name.entry.canonical_model == "GeForce RTX 4050 6GB",
+         "an equally close fuzzy match should conservatively use the lowest-scoring variant");
+
+  const auto too_broad = catalog.lookup("GeForce RTX", "NVIDIA");
+  expect(too_broad.status == req::GpuLookupStatus::NOT_FOUND,
+         "a family name without a model number should not fuzzy-match");
 
   const auto pci = catalog.lookup("unrecognized name", "NVIDIA", "0x10DE", "0x2684");
   expect(pci.status == req::GpuLookupStatus::MATCHED, "known PCI IDs should take precedence over the model string");
