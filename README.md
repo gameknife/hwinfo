@@ -250,6 +250,7 @@ const auto report = hwinfo::requirements::evaluate(snapshot, requirement, gpu_ca
 
 GPU 目录是带表头的 CSV，必需字段为 `canonical_model` 和正整数 `score`。可选字段包括 `rank`、`vendor`、
 `aliases`、`vendor_id` 和 `device_id`。别名之间使用 `|` 分隔。比较使用分数而不是排名，因此同一份目录中分数越高表示性能越高。
+生成器按 `score` 从高到低输出；同分时依次按 `rank` 和 `canonical_model` 升序排列，保证结果稳定。
 
 ```csv
 canonical_model,score,rank,vendor,aliases,vendor_id,device_id

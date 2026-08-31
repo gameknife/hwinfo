@@ -301,6 +301,15 @@ def merge_gpuinfo_names(
     return canonical_names, aliases, matched
 
 
+def score_sorted_rows(
+    rows: list[tuple[str, int, int]], canonical_names: dict[int, str]
+) -> list[tuple[int, tuple[str, int, int]]]:
+    return sorted(
+        enumerate(rows),
+        key=lambda item: (-item[1][1], item[1][2], canonical_names.get(item[0], item[1][0]).lower()),
+    )
+
+
 def main() -> int:
     arguments = parse_arguments()
     if not arguments.acknowledge_terms:
@@ -350,6 +359,7 @@ def main() -> int:
         output.write(f"# source_url={arguments.url}\n")
         output.write(f"# retrieved_at={retrieved_at}\n")
         output.write("# copyright=Copyright PassMark Software; local use only; do not redistribute without permission\n")
+        output.write("# sort=score descending; rank and canonical_model ascending for ties\n")
         if gpuinfo_devices:
             output.write("# model_source=Vulkan Hardware Database by Sascha Willems\n")
             output.write(f"# model_source_url={gpuinfo_source_url}\n")
@@ -358,7 +368,7 @@ def main() -> int:
             output.write("# model_changes=Matched device names replace PassMark names; original names are aliases\n")
         writer = csv.writer(output)
         writer.writerow(["canonical_model", "score", "rank", "vendor", "aliases", "vendor_id", "device_id"])
-        for index, (name, score, rank) in enumerate(parser.rows):
+        for index, (name, score, rank) in score_sorted_rows(parser.rows, canonical_names):
             writer.writerow([canonical_names.get(index, name), score, rank, "", "|".join(aliases.get(index, [])), "", ""])
 
     print(f"saved {len(parser.rows)} GPU entries to {arguments.output}")

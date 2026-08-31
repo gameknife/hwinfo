@@ -2,14 +2,62 @@
 
 #include <hwinfo_local_requirements.h>
 
+#include <cstdint>
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <vector>
+
+#if defined(_WIN32)
+#include <windows.h>
+#endif
 
 namespace req = hwinfo::requirements;
 namespace local = hwinfo::local_requirements;
 
+namespace {
+
+std::string join(const std::vector<std::string>& values, const char* separator) {
+  std::ostringstream stream;
+  for (std::size_t index = 0; index < values.size(); ++index) {
+    if (index != 0) {
+      stream << separator;
+    }
+    stream << values[index];
+  }
+  return stream.str();
+}
+
+void addFailureReason(std::vector<std::string>* reasons, const std::string& cause, const std::string& target,
+                      const std::string& current) {
+  reasons->push_back(cause + "（目标设备：" + target + "；当前设备：" + current + "）");
+}
+
+std::string memoryInGiB(std::uint64_t bytes) {
+  constexpr std::uint64_t kGiB = 1024ull * 1024ull * 1024ull;
+  return std::to_string(bytes / kGiB) + " GiB";
+}
+
+std::string gpuForReason(const req::GpuEvaluation& gpu) {
+  if (!gpu.detected_canonical_model.empty()) {
+    return gpu.detected_canonical_model;
+  }
+  if (!gpu.detected_model.empty()) {
+    return gpu.detected_model;
+  }
+  if (!gpu.unresolved_models.empty()) {
+    return join(gpu.unresolved_models, "、");
+  }
+  return "未检测到或无法识别";
+}
+
+}  // namespace
+
 int main() {
+#if defined(_WIN32)
+  SetConsoleOutputCP(CP_UTF8);
+#endif
+
   std::istringstream catalog_stream(std::string(local::gpu_catalog_csv, local::gpu_catalog_csv_size));
   req::GpuCatalog catalog;
   std::string error;
@@ -39,6 +87,31 @@ int main() {
             << ", detected " << report.memory.detected_bytes << " bytes)\n"
             << "disk: " << req::to_string(report.disk.status) << " (detected " << report.disk.solid_state_count
             << " SSDs)\n";
+
+  if (!report.passed()) {
+    std::vector<std::string> reasons;
+    if (report.cpu.status != req::EvaluationStatus::PASSED) {
+      addFailureReason(&reasons, report.cpu.status == req::EvaluationStatus::FAILED ? "CPU 物理核心数不足"
+                                                                                      : "CPU 物理核心数无法确认",
+                       "至少 " + std::to_string(report.cpu.required_physical_cores) + " 个物理核心",
+                       std::to_string(report.cpu.detected_physical_cores) + " 个物理核心");
+    }
+    if (report.gpu.status != req::EvaluationStatus::PASSED) {
+      const std::string target_gpu = report.gpu.required_canonical_model.empty() ? report.gpu.required_model
+                                                                                   : report.gpu.required_canonical_model;
+      addFailureReason(&reasons, report.gpu.status == req::EvaluationStatus::FAILED ? "显卡性能不足" : "显卡无法确认",
+                       target_gpu, gpuForReason(report.gpu));
+    }
+    if (report.memory.status != req::EvaluationStatus::PASSED) {
+      addFailureReason(&reasons, report.memory.status == req::EvaluationStatus::FAILED ? "内存容量不足" : "内存容量无法确认",
+                       "至少 " + memoryInGiB(report.memory.required_bytes), memoryInGiB(report.memory.detected_bytes));
+    }
+    if (report.disk.status != req::EvaluationStatus::PASSED) {
+      addFailureReason(&reasons, report.disk.status == req::EvaluationStatus::FAILED ? "未检测到固态硬盘" : "固态硬盘状态无法确认",
+                       "至少 1 块固态硬盘", std::to_string(report.disk.solid_state_count) + " 块固态硬盘");
+    }
+    std::cout << "reason: " << join(reasons, "；") << "。\n";
+  }
 
   switch (report.overall) {
     case req::EvaluationStatus::PASSED:

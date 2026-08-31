@@ -59,6 +59,12 @@ class GpuInfoAliasTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "truncated"):
             catalog.parse_gpuinfo_devices(payload)
 
+    def test_catalog_rows_are_sorted_by_descending_score(self):
+        rows = [("Low", 10, 3), ("Tie B", 20, 2), ("High", 30, 1), ("Tie A", 20, 2)]
+        sorted_rows = catalog.score_sorted_rows(rows, {1: "Canonical B", 3: "Canonical A"})
+        self.assertEqual([index for index, _row in sorted_rows], [2, 3, 1, 0])
+        self.assertEqual([row[1] for _index, row in sorted_rows], [30, 20, 20, 10])
+
 
 if __name__ == "__main__":
     unittest.main()
