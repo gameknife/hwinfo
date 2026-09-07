@@ -328,6 +328,7 @@ cmake -S . -B build \
   -DHWINFO_BUILD_LOCAL_REQUIREMENTS=ON \
   -DHWINFO_LOCAL_MIN_CPU_CORES=4 \
   -DHWINFO_LOCAL_MIN_GPU_MODEL="GeForce RTX 3060" \
+  -DHWINFO_LOCAL_MIN_GPU_DISPLAY_TEXT="GeForce RTX 3060 或同等性能显卡" \
   -DHWINFO_LOCAL_ALLOW_UNRECOGNIZED_GPU=ON \
   -DHWINFO_LOCAL_MIN_MEMORY_GIB=16 \
   -DHWINFO_LOCAL_REQUIRE_SSD=ON
@@ -347,6 +348,7 @@ build/bin/hardware_requirements_embedded
 | `HWINFO_LOCAL_GPU_CATALOG` | `data/local/passmark_gpu_catalog.csv` | 配置阶段读取的 GPU CSV |
 | `HWINFO_LOCAL_MIN_CPU_CORES` | `4` | 最少物理 CPU 核心总数 |
 | `HWINFO_LOCAL_MIN_GPU_MODEL` | `GeForce RTX 3060` | 最低 GPU 型号 |
+| `HWINFO_LOCAL_MIN_GPU_DISPLAY_TEXT` | 与 `HWINFO_LOCAL_MIN_GPU_MODEL` 相同 | 输出中显示的目标 GPU 文字，可自定义 |
 | `HWINFO_LOCAL_ALLOW_UNRECOGNIZED_GPU` | `ON` | 未收录但确实检测到的 GPU 是否按新型号通过 |
 | `HWINFO_LOCAL_MIN_MEMORY_GIB` | `16` | 最少 RAM，单位 GiB |
 | `HWINFO_LOCAL_REQUIRE_SSD` | `ON` | 是否要求至少一个 SSD |

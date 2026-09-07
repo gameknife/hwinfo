@@ -82,7 +82,7 @@ int main() {
             << "cpu: " << req::to_string(report.cpu.status) << " (required "
             << report.cpu.required_physical_cores << ", detected " << report.cpu.detected_physical_cores << ")\n"
             << "gpu: " << req::to_string(report.gpu.status) << " (required "
-            << report.gpu.required_canonical_model << ", detected " << displayed_gpu << ")\n"
+            << local::min_gpu_display_text << ", detected " << displayed_gpu << ")\n"
             << "memory: " << req::to_string(report.memory.status) << " (required " << report.memory.required_bytes
             << ", detected " << report.memory.detected_bytes << " bytes)\n"
             << "disk: " << req::to_string(report.disk.status) << " (detected " << report.disk.solid_state_count
@@ -97,10 +97,8 @@ int main() {
                        std::to_string(report.cpu.detected_physical_cores) + " 个物理核心");
     }
     if (report.gpu.status != req::EvaluationStatus::PASSED) {
-      const std::string target_gpu = report.gpu.required_canonical_model.empty() ? report.gpu.required_model
-                                                                                   : report.gpu.required_canonical_model;
       addFailureReason(&reasons, report.gpu.status == req::EvaluationStatus::FAILED ? "显卡性能不足" : "显卡无法确认",
-                       target_gpu, gpuForReason(report.gpu));
+                       local::min_gpu_display_text, gpuForReason(report.gpu));
     }
     if (report.memory.status != req::EvaluationStatus::PASSED) {
       addFailureReason(&reasons, report.memory.status == req::EvaluationStatus::FAILED ? "内存容量不足" : "内存容量无法确认",
